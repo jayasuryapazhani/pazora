@@ -13,6 +13,10 @@ export type MediaImages = {
   parentBackdropTags: string[];
 };
 
+export type MediaArtwork = {
+  posterUrl: string | null;
+  backdropUrl: string | null;
+};
 export type MediaItem = {
   id: string;
   name: string;
@@ -31,6 +35,7 @@ export type MediaItem = {
   indexNumber: number | null;
   parentIndexNumber: number | null;
   images: MediaImages;
+  artwork: MediaArtwork;
   user: MediaUserState;
 };
 

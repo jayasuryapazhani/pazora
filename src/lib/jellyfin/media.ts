@@ -15,6 +15,9 @@ import type {
   AuthenticatedJellyfinContext,
 } from "@/lib/auth/jellyfin-context";
 import {
+  getMediaArtwork,
+} from "@/lib/jellyfin/artwork";
+import {
   createAuthenticatedJellyfinApi,
 } from "@/lib/jellyfin/server";
 import type {
@@ -84,6 +87,8 @@ function normalizeMediaItem(
       parentBackdropTags:
         item.ParentBackdropImageTags ?? [],
     },
+    artwork:
+      getMediaArtwork(item),
     user: {
       played:
         item.UserData?.Played ?? false,
