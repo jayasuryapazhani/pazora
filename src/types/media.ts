@@ -17,6 +17,7 @@ export type MediaArtwork = {
   posterUrl: string | null;
   backdropUrl: string | null;
 };
+
 export type MediaItem = {
   id: string;
   name: string;
@@ -56,6 +57,30 @@ export type MediaBrowseKind =
   | "series"
   | "collection";
 
+export type MediaBrowseSort =
+  | "title-asc"
+  | "title-desc"
+  | "recently-added"
+  | "release-newest"
+  | "release-oldest"
+  | "rating-highest"
+  | "runtime-longest"
+  | "runtime-shortest";
+
+export type MediaWatchFilter =
+  | "all"
+  | "watched"
+  | "unwatched"
+  | "in-progress";
+
+export type MediaBrowseOptions = {
+  genre: string | null;
+  year: number | null;
+  watch: MediaWatchFilter;
+  favoriteOnly: boolean;
+  sort: MediaBrowseSort;
+};
+
 export type MediaPage = {
   items: MediaItem[];
   total: number;
@@ -67,6 +92,7 @@ export type MediaPage = {
 
 export type MediaBrowseData = {
   kind: MediaBrowseKind;
+  options: MediaBrowseOptions;
   page: MediaPage;
 };
 
@@ -74,6 +100,7 @@ export type MediaSearchData = {
   query: string;
   page: MediaPage;
 };
+
 export type MediaDetailMetadata = {
   originalTitle: string | null;
   premiereDate: string | null;
@@ -95,6 +122,7 @@ export type MediaEpisodesData = {
   seasonId: string;
   episodes: MediaShelf;
 };
+
 export type MediaHomeData = {
   libraries: MediaLibrary[];
   continueWatching: MediaShelf;

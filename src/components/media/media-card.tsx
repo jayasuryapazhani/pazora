@@ -15,6 +15,7 @@ type MediaCardProps = {
   item: MediaItem;
   variant: "poster" | "landscape";
   expanded: boolean;
+  displayMode?: "row" | "library";
   onPointerEnter: () => void;
   onPointerLeave: () => void;
   onFocus: () => void;
@@ -73,6 +74,7 @@ export function MediaCard({
   item,
   variant,
   expanded,
+  displayMode = "row",
   onPointerEnter,
   onPointerLeave,
   onFocus,
@@ -114,6 +116,22 @@ export function MediaCard({
 
   const isLandscape =
     variant === "landscape";
+
+  const libraryMode =
+    displayMode === "library";
+
+  const isInProgress =
+    !item.user.played &&
+    progressValue > 0;
+
+  const collapsedStateLabel =
+    item.user.played
+      ? "Watched"
+      : isInProgress
+        ? "In progress"
+        : item.user.favorite
+          ? "Favorite"
+          : null;
 
   const genres =
     item.genres
@@ -248,6 +266,13 @@ export function MediaCard({
           ) : (
             <div className="flex h-full flex-col">
               <div className="relative min-h-0 flex-1 overflow-hidden rounded-md bg-[#1a1a1e] shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
+                {libraryMode &&
+                collapsedStateLabel ? (
+                  <span className="absolute left-2.5 top-2.5 z-20 rounded-full border border-[#d3203f]/30 bg-[#5b1020]/90 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-[#ff8298] shadow-lg backdrop-blur-md">
+                    {collapsedStateLabel}
+                  </span>
+                ) : null}
+
                 {collapsedArtwork ? (
                   <div
                     role="img"
@@ -267,7 +292,14 @@ export function MediaCard({
                 )}
               </div>
 
-              <div className="h-11 shrink-0 pt-2.5">
+              <div
+                className={[
+                  "shrink-0 pt-2.5",
+                  libraryMode
+                    ? "h-12"
+                    : "h-11",
+                ].join(" ")}
+              >
                 <p className="truncate text-[13px] font-medium text-white/82">
                   {item.name}
                 </p>
@@ -279,7 +311,24 @@ export function MediaCard({
                     </span>
                   ) : null}
 
-                  {item.officialRating ? (
+                  {libraryMode && rating ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span aria-hidden="true">
+                        {"\u2605"}
+                      </span>
+
+                      {rating}
+                    </span>
+                  ) : null}
+
+                  {libraryMode && runtime ? (
+                    <span>
+                      {runtime}
+                    </span>
+                  ) : null}
+
+                  {!libraryMode &&
+                  item.officialRating ? (
                     <span>
                       {item.officialRating}
                     </span>
