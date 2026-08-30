@@ -51,6 +51,29 @@ export type MediaShelf = {
   total: number;
 };
 
+export type MediaBrowseKind =
+  | "movie"
+  | "series"
+  | "collection";
+
+export type MediaPage = {
+  items: MediaItem[];
+  total: number;
+  startIndex: number;
+  limit: number;
+  hasMore: boolean;
+  nextStartIndex: number | null;
+};
+
+export type MediaBrowseData = {
+  kind: MediaBrowseKind;
+  page: MediaPage;
+};
+
+export type MediaSearchData = {
+  query: string;
+  page: MediaPage;
+};
 export type MediaHomeData = {
   libraries: MediaLibrary[];
   continueWatching: MediaShelf;
