@@ -8,6 +8,7 @@ import {
 } from "@/lib/jellyfin/media";
 import {
   parseMediaBrowseKind,
+  parseMediaBrowseOptions,
   parseMediaPagination,
 } from "@/lib/utils/media-query";
 
@@ -76,6 +77,24 @@ export async function GET(
     );
   }
 
+  const options =
+    parseMediaBrowseOptions(
+      searchParams,
+    );
+
+  if (!options.ok) {
+    return NextResponse.json(
+      {
+        error: options.error,
+      },
+      {
+        status: 400,
+        headers:
+          privateNoStoreHeaders,
+      },
+    );
+  }
+
   try {
     const media =
       await getMediaBrowseData(
@@ -83,6 +102,7 @@ export async function GET(
         kind.value,
         pagination.value.startIndex,
         pagination.value.limit,
+        options.value,
       );
 
     return NextResponse.json(

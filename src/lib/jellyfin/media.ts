@@ -7,6 +7,7 @@ import {
 import {
   BaseItemKind,
   ItemFields,
+  ItemFilter,
   ItemSortBy,
   SortOrder,
   type BaseItemDto,
@@ -25,6 +26,7 @@ import {
 import type {
   MediaBrowseData,
   MediaBrowseKind,
+  MediaBrowseOptions,
   MediaDetailMetadata,
   MediaDetailsData,
   MediaEpisodesData,
@@ -426,11 +428,53 @@ const browseItemTypes: Record<
   ],
 };
 
+const browseSortConfig: Record<
+  MediaBrowseOptions["sort"],
+  {
+    sortBy: ItemSortBy;
+    sortOrder: SortOrder;
+  }
+> = {
+  "title-asc": {
+    sortBy: ItemSortBy.SortName,
+    sortOrder: SortOrder.Ascending,
+  },
+  "title-desc": {
+    sortBy: ItemSortBy.SortName,
+    sortOrder: SortOrder.Descending,
+  },
+  "recently-added": {
+    sortBy: ItemSortBy.DateCreated,
+    sortOrder: SortOrder.Descending,
+  },
+  "release-newest": {
+    sortBy: ItemSortBy.PremiereDate,
+    sortOrder: SortOrder.Descending,
+  },
+  "release-oldest": {
+    sortBy: ItemSortBy.PremiereDate,
+    sortOrder: SortOrder.Ascending,
+  },
+  "rating-highest": {
+    sortBy: ItemSortBy.CommunityRating,
+    sortOrder: SortOrder.Descending,
+  },
+  "runtime-longest": {
+    sortBy: ItemSortBy.Runtime,
+    sortOrder: SortOrder.Descending,
+  },
+  "runtime-shortest": {
+    sortBy: ItemSortBy.Runtime,
+    sortOrder: SortOrder.Ascending,
+  },
+};
+
 export async function getMediaBrowseData(
   context: AuthenticatedJellyfinContext,
   kind: MediaBrowseKind,
   startIndex: number,
   limit: number,
+  options: MediaBrowseOptions,
 ): Promise<MediaBrowseData> {
   const api =
     createAuthenticatedJellyfinApi(
@@ -440,6 +484,25 @@ export async function getMediaBrowseData(
 
   const itemTypes =
     browseItemTypes[kind];
+
+  const sort =
+    browseSortConfig[
+      options.sort
+    ];
+
+  const isPlayed =
+    options.watch === "watched"
+      ? true
+      : options.watch === "unwatched"
+        ? false
+        : undefined;
+
+  const filters =
+    options.watch === "in-progress"
+      ? [
+          ItemFilter.IsResumable,
+        ]
+      : undefined;
 
   const response =
     await getItemsApi(api).getItems({
@@ -452,11 +515,25 @@ export async function getMediaBrowseData(
       ],
       collapseBoxSetItems: false,
       fields: [...mediaFields],
+      genres:
+        options.genre
+          ? [options.genre]
+          : undefined,
+      years:
+        options.year !== null
+          ? [options.year]
+          : undefined,
+      isPlayed,
+      isFavorite:
+        options.favoriteOnly
+          ? true
+          : undefined,
+      filters,
       sortBy: [
-        ItemSortBy.SortName,
+        sort.sortBy,
       ],
       sortOrder: [
-        SortOrder.Ascending,
+        sort.sortOrder,
       ],
       enableUserData: true,
       enableImages: true,
@@ -479,6 +556,7 @@ export async function getMediaBrowseData(
 
   return {
     kind,
+    options,
     page,
   };
 }

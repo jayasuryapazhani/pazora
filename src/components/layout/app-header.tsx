@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import {
+  usePathname,
   useRouter,
 } from "next/navigation";
 
@@ -31,6 +32,9 @@ export function AppHeader({
 }: AppHeaderProps) {
   const router =
     useRouter();
+
+  const pathname =
+    usePathname();
 
   const [scrolled, setScrolled] =
     useState(false);
@@ -155,36 +159,69 @@ export function AppHeader({
           <Link
             href="/browse"
             prefetch={false}
-            className="text-white transition hover:text-white"
+            aria-current={
+              pathname === "/browse"
+                ? "page"
+                : undefined
+            }
+            className={[
+              "transition hover:text-white",
+              pathname === "/browse"
+                ? "text-white"
+                : "text-white/65",
+            ].join(" ")}
           >
             Home
           </Link>
 
           {showMovies ? (
-            <a
-              href="#movies"
-              className="text-white/65 transition hover:text-white"
+            <Link
+              href="/movies"
+              prefetch={false}
+              aria-current={
+                pathname === "/movies"
+                  ? "page"
+                  : undefined
+              }
+              className={[
+                "transition hover:text-white",
+                pathname === "/movies"
+                  ? "text-white"
+                  : "text-white/65",
+              ].join(" ")}
             >
               Movies
-            </a>
+            </Link>
           ) : null}
 
           {showSeries ? (
-            <a
-              href="#tv-shows"
+            <Link
+              href="/browse#tv-shows"
+              prefetch={false}
               className="text-white/65 transition hover:text-white"
             >
               TV Shows
-            </a>
+            </Link>
           ) : null}
 
           {showCollections ? (
-            <a
-              href="#collections"
-              className="text-white/65 transition hover:text-white"
+            <Link
+              href="/collections"
+              prefetch={false}
+              aria-current={
+                pathname === "/collections"
+                  ? "page"
+                  : undefined
+              }
+              className={[
+                "transition hover:text-white",
+                pathname === "/collections"
+                  ? "text-white"
+                  : "text-white/65",
+              ].join(" ")}
             >
               Collections
-            </a>
+            </Link>
           ) : null}
         </nav>
 
@@ -239,7 +276,7 @@ export function AppHeader({
                     className="w-full rounded-md px-3 py-2.5 text-left text-sm text-white/70 transition hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {signingOut
-                      ? "Signing outâ€¦"
+                      ? "Signing out..."
                       : "Sign out"}
                   </button>
 

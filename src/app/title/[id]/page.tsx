@@ -286,9 +286,9 @@ export default async function TitlePage({
       <main className="min-h-screen bg-[#0b0b0d] text-white">
         <AppHeader
           userName={context.user.name}
-          showMovies={false}
+          showMovies
           showSeries={false}
-          showCollections={false}
+          showCollections
         />
 
         <section className="pazora-page-gutter flex min-h-screen items-center justify-center pt-20">
@@ -355,9 +355,9 @@ export default async function TitlePage({
     <main className="min-h-screen bg-[#0b0b0d] text-white">
       <AppHeader
         userName={context.user.name}
-        showMovies={false}
+        showMovies
         showSeries={false}
-        showCollections={false}
+        showCollections
       />
 
       <section className="relative min-h-[35rem] overflow-hidden pt-[var(--pazora-header-height)] sm:min-h-[40rem] lg:min-h-[44rem]">
