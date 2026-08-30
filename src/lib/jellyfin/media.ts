@@ -21,9 +21,13 @@ import {
   createAuthenticatedJellyfinApi,
 } from "@/lib/jellyfin/server";
 import type {
+  MediaBrowseData,
+  MediaBrowseKind,
   MediaHomeData,
   MediaItem,
   MediaLibrary,
+  MediaPage,
+  MediaSearchData,
   MediaShelf,
 } from "@/types/media";
 
@@ -365,5 +369,173 @@ export async function getMediaHomeData(
           BaseItemKind.BoxSet,
         ],
       ),
+  };
+}
+function normalizeMediaPage(
+  result: BaseItemDtoQueryResult,
+  startIndex: number,
+  limit: number,
+): MediaPage {
+  const shelf =
+    normalizeShelf(result);
+
+  const returnedCount =
+    result.Items?.length ?? 0;
+
+  const total =
+    result.TotalRecordCount ??
+    startIndex + returnedCount;
+
+  const candidateNextIndex =
+    startIndex + returnedCount;
+
+  const hasMore =
+    returnedCount > 0 &&
+    candidateNextIndex < total;
+
+  return {
+    items: shelf.items,
+    total,
+    startIndex,
+    limit,
+    hasMore,
+    nextStartIndex:
+      hasMore
+        ? candidateNextIndex
+        : null,
+  };
+}
+
+const browseItemTypes: Record<
+  MediaBrowseKind,
+  readonly BaseItemKind[]
+> = {
+  movie: [
+    BaseItemKind.Movie,
+  ],
+  series: [
+    BaseItemKind.Series,
+  ],
+  collection: [
+    BaseItemKind.BoxSet,
+  ],
+};
+
+export async function getMediaBrowseData(
+  context: AuthenticatedJellyfinContext,
+  kind: MediaBrowseKind,
+  startIndex: number,
+  limit: number,
+): Promise<MediaBrowseData> {
+  const api =
+    createAuthenticatedJellyfinApi(
+      context.accessToken,
+      context.deviceId,
+    );
+
+  const itemTypes =
+    browseItemTypes[kind];
+
+  const response =
+    await getItemsApi(api).getItems({
+      userId: context.user.id,
+      recursive: true,
+      startIndex,
+      limit,
+      includeItemTypes: [
+        ...itemTypes,
+      ],
+      collapseBoxSetItems: false,
+      fields: [...mediaFields],
+      sortBy: [
+        ItemSortBy.SortName,
+      ],
+      sortOrder: [
+        SortOrder.Ascending,
+      ],
+      enableUserData: true,
+      enableImages: true,
+      imageTypeLimit: 2,
+      enableTotalRecordCount: true,
+    });
+
+  const page =
+    normalizeMediaPage(
+      response.data,
+      startIndex,
+      limit,
+    );
+
+  assertShelfTypes(
+    "Media browse",
+    page,
+    itemTypes,
+  );
+
+  return {
+    kind,
+    page,
+  };
+}
+
+const searchItemTypes = [
+  BaseItemKind.Movie,
+  BaseItemKind.Series,
+  BaseItemKind.Episode,
+  BaseItemKind.BoxSet,
+] as const;
+
+export async function getMediaSearchData(
+  context: AuthenticatedJellyfinContext,
+  query: string,
+  startIndex: number,
+  limit: number,
+): Promise<MediaSearchData> {
+  const api =
+    createAuthenticatedJellyfinApi(
+      context.accessToken,
+      context.deviceId,
+    );
+
+  const response =
+    await getItemsApi(api).getItems({
+      userId: context.user.id,
+      recursive: true,
+      searchTerm: query,
+      startIndex,
+      limit,
+      includeItemTypes: [
+        ...searchItemTypes,
+      ],
+      collapseBoxSetItems: false,
+      fields: [...mediaFields],
+      sortBy: [
+        ItemSortBy.SortName,
+      ],
+      sortOrder: [
+        SortOrder.Ascending,
+      ],
+      enableUserData: true,
+      enableImages: true,
+      imageTypeLimit: 2,
+      enableTotalRecordCount: true,
+    });
+
+  const page =
+    normalizeMediaPage(
+      response.data,
+      startIndex,
+      limit,
+    );
+
+  assertShelfTypes(
+    "Media search",
+    page,
+    searchItemTypes,
+  );
+
+  return {
+    query,
+    page,
   };
 }
