@@ -1,7 +1,4 @@
-import { cookies } from "next/headers";
-
-import { sessionCookies } from "@/lib/auth/session";
-import { getCurrentSessionUser } from "@/lib/jellyfin/server";
+import { getJellyfinContext } from "@/lib/auth/jellyfin-context";
 
 export type ValidatedSession =
   | {
@@ -19,43 +16,17 @@ export type ValidatedSession =
     };
 
 export async function getValidatedSession(): Promise<ValidatedSession> {
-  const cookieStore = await cookies();
+  const context =
+    await getJellyfinContext();
 
-  const accessToken =
-    cookieStore.get(sessionCookies.accessToken)?.value;
-
-  const deviceId =
-    cookieStore.get(sessionCookies.deviceId)?.value;
-
-  if (!accessToken || !deviceId) {
+  if (context.status !== "valid") {
     return {
-      status: "anonymous",
+      status: context.status,
     };
   }
 
-  try {
-    const user =
-      await getCurrentSessionUser(
-        accessToken,
-        deviceId,
-      );
-
-    if (!user.Id || !user.Name) {
-      return {
-        status: "invalid",
-      };
-    }
-
-    return {
-      status: "valid",
-      user: {
-        id: user.Id,
-        name: user.Name,
-      },
-    };
-  } catch {
-    return {
-      status: "invalid",
-    };
-  }
+  return {
+    status: "valid",
+    user: context.user,
+  };
 }
