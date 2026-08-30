@@ -188,3 +188,37 @@ export function parseMediaSearchTerm(
     value: query,
   };
 }
+const jellyfinItemIdPattern =
+  /^[0-9a-fA-F-]+$/;
+
+export function parseMediaItemId(
+  rawId: string | null,
+  name = "id",
+): MediaQueryResult<string> {
+  const id =
+    rawId?.trim() ?? "";
+
+  if (!id) {
+    return {
+      ok: false,
+      error:
+        `${name} is required.`,
+    };
+  }
+
+  if (
+    id.length > 64 ||
+    !jellyfinItemIdPattern.test(id)
+  ) {
+    return {
+      ok: false,
+      error:
+        `${name} is invalid.`,
+    };
+  }
+
+  return {
+    ok: true,
+    value: id,
+  };
+}
