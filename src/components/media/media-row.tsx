@@ -1,7 +1,10 @@
 "use client";
 
 import {
+  useCallback,
+  useEffect,
   useRef,
+  useState,
 } from "react";
 
 import {
@@ -17,6 +20,44 @@ type MediaRowProps = {
   items: MediaItem[];
   variant?: "poster" | "landscape";
 };
+
+const inlineOpenDelayMs = 300;
+const inlineCloseDelayMs = 160;
+const visibilityInsetPx = 18;
+
+function supportsInlineExpansion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia(
+      "(hover: hover) and (pointer: fine)",
+    ).matches
+  );
+}
+
+function itemSizeClass(
+  variant: "poster" | "landscape",
+  expanded: boolean,
+): string {
+
+  if (expanded) {
+    return [
+      "w-[clamp(30rem,42vw,39rem)]",
+      "h-[clamp(21rem,24vw,25rem)]",
+    ].join(" ");
+  }
+
+  if (variant === "landscape") {
+    return [
+      "w-[clamp(15rem,23vw,22rem)]",
+      "h-[clamp(8.4375rem,12.94vw,12.375rem)]",
+    ].join(" ");
+  }
+
+  return [
+    "w-[clamp(9.25rem,13vw,12rem)]",
+    "h-[clamp(16.625rem,22.2vw,20.75rem)]",
+  ].join(" ");
+}
 
 function ArrowIcon({
   direction,
@@ -53,8 +94,242 @@ export function MediaRow({
   const scroller =
     useRef<HTMLDivElement>(null);
 
+  const itemElements =
+    useRef<
+      Map<string, HTMLDivElement>
+    >(
+      new Map(),
+    );
+
+  const openTimerRef =
+    useRef<number | null>(null);
+
+  const closeTimerRef =
+    useRef<number | null>(null);
+
+  const [
+    activeItemId,
+    setActiveItemId,
+  ] =
+    useState<string | null>(null);
+
+  const ensureItemVisible =
+    useCallback(
+      (
+        itemId: string,
+      ) => {
+        const scrollElement =
+          scroller.current;
+
+        const itemElement =
+          itemElements.current.get(
+            itemId,
+          );
+
+        if (
+          !scrollElement ||
+          !itemElement
+        ) {
+          return;
+        }
+
+        const scrollerRect =
+          scrollElement.getBoundingClientRect();
+
+        const itemRect =
+          itemElement.getBoundingClientRect();
+
+        const leftBoundary =
+          scrollerRect.left +
+          visibilityInsetPx;
+
+        const rightBoundary =
+          scrollerRect.right -
+          visibilityInsetPx;
+
+        let delta = 0;
+
+        if (
+          itemRect.right >
+          rightBoundary
+        ) {
+          delta =
+            itemRect.right -
+            rightBoundary;
+        } else if (
+          itemRect.left <
+          leftBoundary
+        ) {
+          delta =
+            itemRect.left -
+            leftBoundary;
+        }
+
+        if (
+          Math.abs(delta) < 1
+        ) {
+          return;
+        }
+
+        scrollElement.scrollBy({
+          left: delta,
+          behavior: "smooth",
+        });
+      },
+      [],
+    );
+
+  useEffect(() => {
+    return () => {
+      if (
+        openTimerRef.current !== null
+      ) {
+        window.clearTimeout(
+          openTimerRef.current,
+        );
+      }
+
+      if (
+        closeTimerRef.current !== null
+      ) {
+        window.clearTimeout(
+          closeTimerRef.current,
+        );
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeItemId) {
+      return;
+    }
+
+    let secondFrame:
+      | number
+      | null = null;
+
+    const firstFrame =
+      window.requestAnimationFrame(
+        () => {
+          secondFrame =
+            window.requestAnimationFrame(
+              () => {
+                ensureItemVisible(
+                  activeItemId,
+                );
+              },
+            );
+        },
+      );
+
+    return () => {
+      window.cancelAnimationFrame(
+        firstFrame,
+      );
+
+      if (secondFrame !== null) {
+        window.cancelAnimationFrame(
+          secondFrame,
+        );
+      }
+    };
+  }, [
+    activeItemId,
+    ensureItemVisible,
+  ]);
+
   if (items.length === 0) {
     return null;
+  }
+
+  function clearOpenTimer() {
+    if (
+      openTimerRef.current !== null
+    ) {
+      window.clearTimeout(
+        openTimerRef.current,
+      );
+
+      openTimerRef.current = null;
+    }
+  }
+
+  function clearCloseTimer() {
+    if (
+      closeTimerRef.current !== null
+    ) {
+      window.clearTimeout(
+        closeTimerRef.current,
+      );
+
+      closeTimerRef.current = null;
+    }
+  }
+
+  function activateNow(
+    itemId: string,
+  ) {
+    if (!supportsInlineExpansion()) {
+      return;
+    }
+
+    clearOpenTimer();
+    clearCloseTimer();
+
+    setActiveItemId(itemId);
+  }
+
+  function scheduleOpen(
+    itemId: string,
+  ) {
+    if (!supportsInlineExpansion()) {
+      return;
+    }
+
+    clearOpenTimer();
+    clearCloseTimer();
+
+    if (
+      activeItemId === itemId
+    ) {
+      return;
+    }
+
+    openTimerRef.current =
+      window.setTimeout(
+        () => {
+          openTimerRef.current =
+            null;
+
+          setActiveItemId(
+            itemId,
+          );
+        },
+        inlineOpenDelayMs,
+      );
+  }
+
+  function scheduleClose() {
+    clearOpenTimer();
+    clearCloseTimer();
+
+    closeTimerRef.current =
+      window.setTimeout(
+        () => {
+          closeTimerRef.current =
+            null;
+
+          setActiveItemId(null);
+        },
+        inlineCloseDelayMs,
+      );
+  }
+
+  function closeImmediately() {
+    clearOpenTimer();
+    clearCloseTimer();
+
+    setActiveItemId(null);
   }
 
   function move(
@@ -66,6 +341,8 @@ export function MediaRow({
     if (!element) {
       return;
     }
+
+    closeImmediately();
 
     const amount =
       Math.max(
@@ -115,19 +392,83 @@ export function MediaRow({
         <div
           id={`${id}-scroller`}
           ref={scroller}
-          className="pazora-scrollbar-hidden flex snap-x snap-proximity gap-3.5 overflow-x-auto overscroll-x-contain px-[var(--pazora-page-gutter)] pb-5 pt-1 sm:gap-4"
+          className="pazora-scrollbar-hidden flex snap-x snap-proximity items-start gap-3.5 overflow-x-auto overscroll-x-contain px-[var(--pazora-page-gutter)] pb-5 pt-1 sm:gap-4"
         >
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="snap-start"
-            >
-              <MediaCard
-                item={item}
-                variant={variant}
-              />
-            </div>
-          ))}
+          {items.map(
+            (item) => {
+              const expanded =
+                activeItemId ===
+                item.id;
+
+              return (
+                <div
+                  key={item.id}
+                  ref={(node) => {
+                    if (node) {
+                      itemElements.current.set(
+                        item.id,
+                        node,
+                      );
+                    } else {
+                      itemElements.current.delete(
+                        item.id,
+                      );
+                    }
+                  }}
+                  data-expanded={
+                    expanded
+                      ? "true"
+                      : "false"
+                  }
+                  onTransitionEnd={(
+                    event,
+                  ) => {
+                    if (
+                      event.propertyName ===
+                        "width" &&
+                      expanded
+                    ) {
+                      ensureItemVisible(
+                        item.id,
+                      );
+                    }
+                  }}
+                  className={[
+                    "snap-start shrink-0 transition-[width,height] duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+                    itemSizeClass(
+                      variant,
+                      expanded,
+                    ),
+                  ].join(" ")}
+                >
+                  <MediaCard
+                    item={item}
+                    variant={variant}
+                    expanded={expanded}
+                    onPointerEnter={() => {
+                      scheduleOpen(
+                        item.id,
+                      );
+                    }}
+                    onPointerLeave={
+                      scheduleClose
+                    }
+                    onFocus={() => {
+                      activateNow(
+                        item.id,
+                      );
+                    }}
+                    onBlur={
+                      scheduleClose
+                    }
+                    onEscape={
+                      closeImmediately
+                    }
+                  />
+                </div>
+              );
+            },
+          )}
         </div>
 
         <button

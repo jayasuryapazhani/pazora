@@ -1,20 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
 
 import {
-  MediaCardPreview,
-} from "@/components/media/media-card-preview";
-import type {
-  MediaCardPreviewPosition,
-} from "@/components/media/media-card-preview";
-import {
   formatProgress,
+  formatRating,
   formatRuntime,
 } from "@/lib/utils/media-format";
 import type {
@@ -24,16 +14,15 @@ import type {
 type MediaCardProps = {
   item: MediaItem;
   variant: "poster" | "landscape";
+  expanded: boolean;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
+  onFocus: () => void;
+  onBlur: () => void;
+  onEscape: () => void;
 };
 
-const previewOpenDelayMs = 325;
-const previewCloseDelayMs = 130;
-const previewMaximumWidth = 340;
-const previewViewportGutter = 16;
-const previewHeaderClearance = 80;
-const previewInformationHeight = 142;
-
-function getArtwork(
+function getCollapsedArtwork(
   item: MediaItem,
   variant: MediaCardProps["variant"],
 ): string | null {
@@ -50,130 +39,63 @@ function getArtwork(
   );
 }
 
-function supportsHoverPreview(): boolean {
+function getExpandedArtwork(
+  item: MediaItem,
+): string | null {
   return (
-    typeof window !== "undefined" &&
-    window.matchMedia(
-      "(hover: hover) and (pointer: fine)",
-    ).matches
+    item.artwork.backdropUrl ??
+    item.artwork.posterUrl
   );
 }
 
-function calculatePreviewPosition(
-  anchor: HTMLAnchorElement,
-): MediaCardPreviewPosition {
-  const rect =
-    anchor.getBoundingClientRect();
+function getTypeLabel(
+  item: MediaItem,
+): string {
+  if (item.type === "BoxSet") {
+    return "Collection";
+  }
 
-  const width =
-    Math.min(
-      previewMaximumWidth,
-      Math.max(
-        1,
-        window.innerWidth -
-          previewViewportGutter * 2,
-      ),
+  if (
+    item.type === "Episode" &&
+    item.parentIndexNumber !== null &&
+    item.indexNumber !== null
+  ) {
+    return (
+      `S${item.parentIndexNumber} ` +
+      `E${item.indexNumber}`
     );
+  }
 
-  const estimatedHeight =
-    width * (9 / 16) +
-    previewInformationHeight;
-
-  const preferredLeft =
-    rect.left +
-    rect.width / 2 -
-    width / 2;
-
-  const maximumLeft =
-    Math.max(
-      previewViewportGutter,
-      window.innerWidth -
-        width -
-        previewViewportGutter,
-    );
-
-  const left =
-    Math.min(
-      maximumLeft,
-      Math.max(
-        previewViewportGutter,
-        preferredLeft,
-      ),
-    );
-
-  const minimumTop =
-    previewHeaderClearance;
-
-  const maximumTop =
-    Math.max(
-      minimumTop,
-      window.innerHeight -
-        estimatedHeight -
-        previewViewportGutter,
-    );
-
-  const preferredTop =
-    rect.top +
-    rect.height / 2 -
-    estimatedHeight / 2;
-
-  const top =
-    Math.min(
-      maximumTop,
-      Math.max(
-        minimumTop,
-        preferredTop,
-      ),
-    );
-
-  const horizontalShift =
-    left - preferredLeft;
-
-  const transformOrigin =
-    Math.abs(horizontalShift) < 8
-      ? "center center"
-      : horizontalShift > 0
-        ? "left center"
-        : "right center";
-
-  return {
-    top,
-    left,
-    width,
-    transformOrigin,
-  };
+  return item.type;
 }
 
 export function MediaCard({
   item,
   variant,
+  expanded,
+  onPointerEnter,
+  onPointerLeave,
+  onFocus,
+  onBlur,
+  onEscape,
 }: MediaCardProps) {
-  const cardRef =
-    useRef<HTMLAnchorElement>(null);
-
-  const openTimerRef =
-    useRef<number | null>(null);
-
-  const closeTimerRef =
-    useRef<number | null>(null);
-
-  const [previewOpen, setPreviewOpen] =
-    useState(false);
-
-  const [
-    previewPosition,
-    setPreviewPosition,
-  ] =
-    useState<MediaCardPreviewPosition | null>(
-      null,
+  const collapsedArtwork =
+    getCollapsedArtwork(
+      item,
+      variant,
     );
 
-  const artwork =
-    getArtwork(item, variant);
+  const expandedArtwork =
+    getExpandedArtwork(item);
 
   const runtime =
     formatRuntime(
       item.runtimeTicks,
+    );
+
+  const rating =
+    formatRating(
+      item.communityRating,
     );
 
   const progress =
@@ -193,321 +115,344 @@ export function MediaCard({
   const isLandscape =
     variant === "landscape";
 
-  function clearOpenTimer() {
-    if (
-      openTimerRef.current !== null
-    ) {
-      window.clearTimeout(
-        openTimerRef.current,
-      );
+  const genres =
+    item.genres
+      .slice(0, 3)
+      .join(" \u2022 ");
 
-      openTimerRef.current = null;
-    }
-  }
+  const status = progress
+    ? progress
+    : item.user.played
+      ? "Watched"
+      : null;
 
-  function clearCloseTimer() {
-    if (
-      closeTimerRef.current !== null
-    ) {
-      window.clearTimeout(
-        closeTimerRef.current,
-      );
-
-      closeTimerRef.current = null;
-    }
-  }
-
-  function showPreview() {
-    if (!supportsHoverPreview()) {
-      return;
-    }
-
-    const anchor =
-      cardRef.current;
-
-    if (!anchor) {
-      return;
-    }
-
-    clearOpenTimer();
-    clearCloseTimer();
-
-    setPreviewPosition(
-      calculatePreviewPosition(
-        anchor,
-      ),
-    );
-
-    setPreviewOpen(true);
-  }
-
-  function schedulePreviewOpen() {
-    if (!supportsHoverPreview()) {
-      return;
-    }
-
-    clearOpenTimer();
-    clearCloseTimer();
-
-    openTimerRef.current =
-      window.setTimeout(
-        () => {
-          openTimerRef.current =
-            null;
-
-          showPreview();
-        },
-        previewOpenDelayMs,
-      );
-  }
-
-  function schedulePreviewClose() {
-    clearOpenTimer();
-    clearCloseTimer();
-
-    closeTimerRef.current =
-      window.setTimeout(
-        () => {
-          closeTimerRef.current =
-            null;
-
-          setPreviewOpen(false);
-        },
-        previewCloseDelayMs,
-      );
-  }
-
-  function keepPreviewOpen() {
-    clearCloseTimer();
-  }
-
-  function closePreviewNow() {
-    clearOpenTimer();
-    clearCloseTimer();
-    setPreviewOpen(false);
-  }
-
-  useEffect(() => {
-    return () => {
-      if (
-        openTimerRef.current !== null
-      ) {
-        window.clearTimeout(
-          openTimerRef.current,
-        );
-      }
-
-      if (
-        closeTimerRef.current !== null
-      ) {
-        window.clearTimeout(
-          closeTimerRef.current,
-        );
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!previewOpen) {
-      return;
-    }
-
-    function dismissPreview() {
-      if (
-        openTimerRef.current !== null
-      ) {
-        window.clearTimeout(
-          openTimerRef.current,
-        );
-
-        openTimerRef.current = null;
-      }
-
-      if (
-        closeTimerRef.current !== null
-      ) {
-        window.clearTimeout(
-          closeTimerRef.current,
-        );
-
-        closeTimerRef.current = null;
-      }
-
-      setPreviewOpen(false);
-    }
-
-    window.addEventListener(
-      "resize",
-      dismissPreview,
-    );
-
-    window.addEventListener(
-      "scroll",
-      dismissPreview,
-      true,
-    );
-
-    return () => {
-      window.removeEventListener(
-        "resize",
-        dismissPreview,
-      );
-
-      window.removeEventListener(
-        "scroll",
-        dismissPreview,
-        true,
-      );
-    };
-  }, [previewOpen]);
+  const metadata = [
+    item.productionYear !== null
+      ? `${item.productionYear}`
+      : null,
+    item.officialRating,
+    runtime,
+    rating
+      ? `\u2605 ${rating}`
+      : null,
+  ].filter(
+    (
+      value,
+    ): value is string =>
+      typeof value === "string" &&
+      value.length > 0,
+  );
 
   return (
-    <>
-      <Link
-        ref={cardRef}
-        href={`/title/${item.id}`}
-        prefetch={false}
-        aria-label={`Open ${item.name}`}
-        onPointerEnter={
-          schedulePreviewOpen
+    <Link
+      href={`/title/${item.id}`}
+      prefetch={false}
+      aria-label={`Open ${item.name}`}
+      onPointerEnter={
+        onPointerEnter
+      }
+      onPointerLeave={
+        onPointerLeave
+      }
+      onFocus={onFocus}
+      onBlur={onBlur}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          onEscape();
         }
-        onPointerLeave={
-          schedulePreviewClose
-        }
-        onFocus={showPreview}
-        onBlur={
-          schedulePreviewClose
-        }
-        onKeyDown={(event) => {
-          if (
-            event.key === "Escape"
-          ) {
-            event.preventDefault();
-            closePreviewNow();
-          }
-        }}
-        className={[
-          "group block shrink-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0b0d]",
-          isLandscape
-            ? "w-[clamp(15rem,23vw,22rem)]"
-            : "w-[clamp(9.25rem,13vw,12rem)]",
-        ].join(" ")}
+      }}
+      className="group relative block h-full w-full rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0b0d]"
+    >
+      <article
+        title={item.name}
+        className="relative h-full w-full"
       >
-        <article
-          title={item.name}
-        >
-          <div
-            className={[
-              "relative isolate overflow-hidden bg-[#1a1a1e] shadow-[0_12px_32px_rgba(0,0,0,0.22)] transition-[filter,box-shadow] duration-200 ease-out group-hover:brightness-[1.035] group-hover:shadow-[0_18px_42px_rgba(0,0,0,0.38)]",
-              isLandscape
-                ? "aspect-video rounded-md"
-                : "aspect-[2/3] rounded-md",
-            ].join(" ")}
-          >
-            {artwork ? (
-              <div
-                role="img"
-                aria-label={`${item.name} artwork`}
-                className="absolute inset-0 bg-cover bg-center transition-transform duration-300 ease-out group-hover:scale-[1.018]"
-                style={{
-                  backgroundImage:
-                    `url("${artwork}")`,
-                }}
-              />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(211,32,63,0.18),transparent_42%),linear-gradient(145deg,#1c1c21,#0f0f12)] p-5 text-center">
-                <div>
-                  <p className="text-[10px] font-semibold tracking-[0.22em] text-[#d3203f]">
-                    PAZORA
-                  </p>
+        {/* ======================================================
+            COLLAPSED CARD
 
-                  <p className="mt-3 line-clamp-3 text-sm font-medium text-white/80">
-                    {item.name}
-                  </p>
+            This remains mounted while expansion happens.
+            It simply fades away instead of being replaced.
+           ====================================================== */}
+        <div
+          aria-hidden={
+            expanded
+              ? "true"
+              : undefined
+          }
+          className={[
+            "absolute inset-0 transition-[opacity,transform] duration-200 ease-out",
+            expanded
+              ? "pointer-events-none scale-[0.985] opacity-0"
+              : "scale-100 opacity-100",
+          ].join(" ")}
+        >
+          {isLandscape ? (
+            <div className="relative aspect-video w-full overflow-hidden rounded-md bg-[#1a1a1e] shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
+              {collapsedArtwork ? (
+                <div
+                  role="img"
+                  aria-label={`${item.name} artwork`}
+                  className="absolute inset-0 bg-cover bg-center transition-transform duration-300 ease-out group-hover:scale-[1.018]"
+                  style={{
+                    backgroundImage:
+                      `url("${collapsedArtwork}")`,
+                  }}
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(211,32,63,0.18),transparent_42%),linear-gradient(145deg,#1c1c21,#0f0f12)]">
+                  <span className="text-[10px] font-semibold tracking-[0.22em] text-[#d3203f]">
+                    PAZORA
+                  </span>
+                </div>
+              )}
+
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/5 to-transparent"
+              />
+
+              <div className="absolute inset-x-0 bottom-0 z-10 px-3 pb-3">
+                <p className="truncate text-sm font-semibold text-white drop-shadow">
+                  {item.name}
+                </p>
+
+                <div className="mt-1.5 flex items-center gap-2 text-[11px] text-white/55">
+                  {progress ? (
+                    <span>
+                      {progress}
+                    </span>
+                  ) : null}
+
+                  {runtime ? (
+                    <span>
+                      {runtime}
+                    </span>
+                  ) : null}
                 </div>
               </div>
-            )}
 
-            <div
-              aria-hidden="true"
-              className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/0 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
-            />
-
-            {isLandscape ? (
-              <>
-                <div className="absolute inset-x-0 bottom-0 z-10 px-3 pb-3">
-                  <p className="truncate text-sm font-semibold text-white drop-shadow">
-                    {item.name}
-                  </p>
-
-                  <div className="mt-1.5 flex items-center gap-2 text-[11px] text-white/55">
-                    {progress ? (
-                      <span>
-                        {progress}
-                      </span>
-                    ) : null}
-
-                    {runtime ? (
-                      <span>
-                        {runtime}
-                      </span>
-                    ) : null}
-                  </div>
+              {progressValue > 0 ? (
+                <div className="absolute inset-x-0 bottom-0 z-20 h-[3px] bg-white/15">
+                  <div
+                    className="h-full bg-[#d3203f]"
+                    style={{
+                      width:
+                        `${progressValue}%`,
+                    }}
+                  />
                 </div>
-
-                {progressValue > 0 ? (
-                  <div className="absolute inset-x-0 bottom-0 z-20 h-[3px] bg-white/15">
-                    <div
-                      className="h-full bg-[#d3203f]"
-                      style={{
-                        width:
-                          `${progressValue}%`,
-                      }}
-                    />
+              ) : null}
+            </div>
+          ) : (
+            <div className="flex h-full flex-col">
+              <div className="relative min-h-0 flex-1 overflow-hidden rounded-md bg-[#1a1a1e] shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
+                {collapsedArtwork ? (
+                  <div
+                    role="img"
+                    aria-label={`${item.name} artwork`}
+                    className="absolute inset-0 bg-cover bg-center transition-transform duration-300 ease-out group-hover:scale-[1.018]"
+                    style={{
+                      backgroundImage:
+                        `url("${collapsedArtwork}")`,
+                    }}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(211,32,63,0.18),transparent_42%),linear-gradient(145deg,#1c1c21,#0f0f12)]">
+                    <span className="text-[10px] font-semibold tracking-[0.22em] text-[#d3203f]">
+                      PAZORA
+                    </span>
                   </div>
-                ) : null}
-              </>
-            ) : null}
-          </div>
+                )}
+              </div>
 
-          {!isLandscape ? (
-            <div className="mt-2.5 min-w-0">
-              <p className="truncate text-[13px] font-medium text-white/82 transition group-hover:text-white">
-                {item.name}
-              </p>
+              <div className="h-11 shrink-0 pt-2.5">
+                <p className="truncate text-[13px] font-medium text-white/82">
+                  {item.name}
+                </p>
 
-              <div className="mt-1 flex items-center gap-2 text-[11px] text-white/35">
-                {item.productionYear ? (
-                  <span>
-                    {item.productionYear}
-                  </span>
-                ) : null}
+                <div className="mt-1 flex items-center gap-2 text-[11px] text-white/35">
+                  {item.productionYear ? (
+                    <span>
+                      {item.productionYear}
+                    </span>
+                  ) : null}
 
-                {item.officialRating ? (
-                  <span>
-                    {item.officialRating}
-                  </span>
-                ) : null}
+                  {item.officialRating ? (
+                    <span>
+                      {item.officialRating}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </div>
-          ) : null}
-        </article>
-      </Link>
+          )}
+        </div>
 
-      <MediaCardPreview
-        item={item}
-        open={previewOpen}
-        position={previewPosition}
-        onPointerEnter={
-          keepPreviewOpen
-        }
-        onPointerLeave={
-          schedulePreviewClose
-        }
-        onNavigate={
-          closePreviewNow
-        }
-      />
-    </>
+
+        {/* ======================================================
+            EXPANDED CARD
+
+            One continuous artwork surface.
+            No right-side information panel.
+            The row wrapper supplies the animated width + height.
+           ====================================================== */}
+        <div
+          aria-hidden={
+            expanded
+              ? undefined
+              : "true"
+          }
+          className={[
+            "absolute inset-0 overflow-hidden rounded-xl border border-white/[0.10] bg-[#161619] transition-[opacity,transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+            expanded
+              ? "scale-100 opacity-100 shadow-[0_26px_72px_rgba(0,0,0,0.62)]"
+              : "pointer-events-none scale-[0.975] opacity-0 shadow-none",
+          ].join(" ")}
+        >
+          {expandedArtwork ? (
+            <div
+              role="img"
+              aria-label={`${item.name} expanded artwork`}
+              className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-[1.018]"
+              style={{
+                backgroundImage:
+                  `url("${expandedArtwork}")`,
+              }}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(211,32,63,0.20),transparent_45%),linear-gradient(145deg,#25252b,#111114)]">
+              <span className="text-xs font-semibold tracking-[0.25em] text-[#d3203f]">
+                PAZORA
+              </span>
+            </div>
+          )}
+
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-gradient-to-t from-black via-black/48 to-transparent"
+          />
+
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-gradient-to-r from-black/28 via-transparent to-black/10"
+          />
+
+          <div className="absolute inset-x-0 bottom-0 z-10 p-5 sm:p-6">
+            <div className="flex items-end justify-between gap-5">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold uppercase tracking-[0.10em] text-white/45 sm:text-[11px]">
+                  <span>
+                    {getTypeLabel(item)}
+                  </span>
+
+                  {status ? (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className="h-0.5 w-0.5 rounded-full bg-white/35"
+                      />
+
+                      <span className="text-[#ef6079]">
+                        {status}
+                      </span>
+                    </>
+                  ) : null}
+
+                  {item.user.favorite ? (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className="h-0.5 w-0.5 rounded-full bg-white/35"
+                      />
+
+                      <span>
+                        Favorite
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+
+                <h3 className="mt-2 line-clamp-2 max-w-[24ch] text-xl font-semibold leading-tight tracking-[-0.02em] text-white sm:text-2xl">
+                  {item.name}
+                </h3>
+
+                {metadata.length > 0 ? (
+                  <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-medium text-white/68 sm:text-xs">
+                    {metadata.map(
+                      (value, index) => (
+                        <span
+                          key={`${value}-${index}`}
+                          className="inline-flex items-center gap-2"
+                        >
+                          {index > 0 ? (
+                            <span
+                              aria-hidden="true"
+                              className="h-0.5 w-0.5 rounded-full bg-white/35"
+                            />
+                          ) : null}
+
+                          {value}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                ) : null}
+
+                {item.overview ? (
+                  <p className="mt-3 line-clamp-2 max-w-[48rem] text-xs leading-5 text-white/65 sm:text-[13px]">
+                    {item.overview}
+                  </p>
+                ) : null}
+
+                {genres ? (
+                  <p className="mt-2.5 truncate text-[11px] text-white/42">
+                    {genres}
+                  </p>
+                ) : null}
+              </div>
+
+              <span
+                aria-hidden="true"
+                className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/35 bg-black/25 text-white/90 backdrop-blur-sm"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </span>
+            </div>
+
+            <div className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-white/82">
+              <span>
+                Details
+              </span>
+
+              <span aria-hidden="true">{"\u2192"}</span>
+            </div>
+          </div>
+
+          {progressValue > 0 ? (
+            <div className="absolute inset-x-0 bottom-0 z-20 h-[3px] bg-white/20">
+              <div
+                className="h-full bg-[#d3203f]"
+                style={{
+                  width:
+                    `${progressValue}%`,
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
+      </article>
+    </Link>
   );
 }

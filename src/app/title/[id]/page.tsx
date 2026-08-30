@@ -8,8 +8,8 @@ import {
   AppHeader,
 } from "@/components/layout/app-header";
 import {
-  MediaCard,
-} from "@/components/media/media-card";
+  MediaRow,
+} from "@/components/media/media-row";
 import {
   MediaProgress,
 } from "@/components/media/media-progress";
@@ -341,11 +341,11 @@ export default async function TitlePage({
     null;
 
   const genres =
-    item.genres.join(" • ");
+    item.genres.join(" \u2022 ");
 
   const studios =
     details.metadata.studios.join(
-      " • ",
+      " \u2022 ",
     );
 
   const facts =
@@ -394,9 +394,7 @@ export default async function TitlePage({
             >
               <span
                 aria-hidden="true"
-              >
-                ←
-              </span>
+              >{"\u2190"}</span>
 
               Back to Home
             </Link>
@@ -438,9 +436,7 @@ export default async function TitlePage({
               ) : null}
 
               {communityRating ? (
-                <span>
-                  ★ {communityRating}
-                </span>
+                <span>{"\u2605"} {communityRating}</span>
               ) : null}
             </div>
 
@@ -522,25 +518,16 @@ export default async function TitlePage({
 
         {details.collectionItems.items
           .length > 0 ? (
-          <section className="mb-14 pt-2">
-            <div className="pazora-page-gutter mb-4">
-              <h2 className="text-xl font-semibold tracking-tight">
-                In this collection
-              </h2>
-            </div>
-
-            <div className="pazora-scrollbar-hidden flex gap-4 overflow-x-auto px-[var(--pazora-page-gutter)] pb-5">
-              {details.collectionItems.items.map(
-                (child) => (
-                  <MediaCard
-                    key={child.id}
-                    item={child}
-                    variant="poster"
-                  />
-                ),
-              )}
-            </div>
-          </section>
+          <div className="mb-14 pt-2">
+            <MediaRow
+              id="collection-items"
+              title="In this collection"
+              items={
+                details.collectionItems.items
+              }
+              variant="poster"
+            />
+          </div>
         ) : null}
 
         {details.seasons.items.length >
