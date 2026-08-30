@@ -1,6 +1,9 @@
 import {
   HomeHero,
 } from "@/components/home/home-hero";
+import type {
+  HomeHeroSlide,
+} from "@/components/home/home-hero";
 import {
   MediaRow,
 } from "@/components/media/media-row";
@@ -13,96 +16,126 @@ type HomeContentProps = {
   media: MediaHomeData;
 };
 
-type HeroSelection = {
-  item: MediaItem;
+type BrowseTarget = {
   target: string;
+  label: string;
 };
 
-function findHeroSelection(
-  media: MediaHomeData,
-): HeroSelection | null {
-  const candidates: HeroSelection[] = [
-    ...media.continueWatching.items.map(
-      (item) => ({
-        item,
-        target:
-          "#continue-watching",
-      }),
-    ),
+const maximumHeroSlides = 8;
 
-    ...media.recentlyAdded.items.map(
-      (item) => ({
-        item,
-        target:
-          "#recently-added",
-      }),
-    ),
-
-    ...media.movies.items.map(
-      (item) => ({
-        item,
-        target: "#movies",
-      }),
-    ),
-
-    ...media.series.items.map(
-      (item) => ({
-        item,
-        target: "#tv-shows",
-      }),
-    ),
-
-    ...media.collections.items.map(
-      (item) => ({
-        item,
-        target:
-          "#collections",
-      }),
-    ),
-  ];
-
+function canUseAsHero(
+  item: MediaItem,
+): boolean {
   return (
-    candidates.find(
-      ({ item }) =>
-        item.artwork.backdropUrl !== null,
-    ) ??
-    candidates.find(
-      ({ item }) =>
-        item.artwork.posterUrl !== null,
-    ) ??
-    candidates[0] ??
-    null
+    item.type === "Movie" &&
+    (
+      item.artwork.backdropUrl !== null ||
+      item.artwork.posterUrl !== null
+    )
   );
 }
 
-function findLibraryTarget(
+function buildHeroSlides(
   media: MediaHomeData,
-): string | null {
+): HomeHeroSlide[] {
+  const candidates: HomeHeroSlide[] = [
+    ...media.continueWatching.items
+      .filter(canUseAsHero)
+      .map(
+        (item) => ({
+          item,
+          sourceLabel:
+            "Continue Watching",
+        }),
+      ),
+
+    ...media.recentlyAdded.items
+      .filter(canUseAsHero)
+      .map(
+        (item) => ({
+          item,
+          sourceLabel:
+            "Recently Added",
+        }),
+      ),
+
+    ...media.movies.items
+      .filter(canUseAsHero)
+      .map(
+        (item) => ({
+          item,
+          sourceLabel:
+            "Featured Movie",
+        }),
+      ),
+  ];
+
+  const seen =
+    new Set<string>();
+
+  const slides: HomeHeroSlide[] =
+    [];
+
+  for (const candidate of candidates) {
+    if (
+      seen.has(candidate.item.id)
+    ) {
+      continue;
+    }
+
+    seen.add(
+      candidate.item.id,
+    );
+
+    slides.push(candidate);
+
+    if (
+      slides.length >=
+      maximumHeroSlides
+    ) {
+      break;
+    }
+  }
+
+  return slides;
+}
+
+function findBrowseTarget(
+  media: MediaHomeData,
+): BrowseTarget | null {
   if (media.movies.items.length > 0) {
-    return "#movies";
+    return {
+      target: "#movies",
+      label: "Browse Movies",
+    };
   }
 
   if (media.series.items.length > 0) {
-    return "#tv-shows";
+    return {
+      target: "#tv-shows",
+      label: "Browse TV Shows",
+    };
   }
 
   if (
     media.collections.items.length > 0
   ) {
-    return "#collections";
+    return {
+      target: "#collections",
+      label:
+        "Browse Collections",
+    };
   }
 
   if (
     media.recentlyAdded.items.length > 0
   ) {
-    return "#recently-added";
-  }
-
-  if (
-    media.continueWatching.items.length >
-    0
-  ) {
-    return "#continue-watching";
+    return {
+      target:
+        "#recently-added",
+      label:
+        "Browse Recently Added",
+    };
   }
 
   return null;
@@ -111,27 +144,21 @@ function findLibraryTarget(
 export function HomeContent({
   media,
 }: HomeContentProps) {
-  const hero =
-    findHeroSelection(media);
+  const heroSlides =
+    buildHeroSlides(media);
 
-  const libraryTarget =
-    findLibraryTarget(media);
-
-  const secondaryTarget =
-    libraryTarget !== null &&
-    libraryTarget !== hero?.target
-      ? libraryTarget
-      : null;
+  const browse =
+    findBrowseTarget(media);
 
   return (
     <>
       <HomeHero
-        item={hero?.item ?? null}
-        primaryTarget={
-          hero?.target ?? null
-        }
+        slides={heroSlides}
         browseTarget={
-          secondaryTarget
+          browse?.target ?? null
+        }
+        browseLabel={
+          browse?.label ?? null
         }
       />
 
@@ -156,13 +183,17 @@ export function HomeContent({
         <MediaRow
           id="movies"
           title="Movies"
-          items={media.movies.items}
+          items={
+            media.movies.items
+          }
         />
 
         <MediaRow
           id="tv-shows"
           title="TV Shows"
-          items={media.series.items}
+          items={
+            media.series.items
+          }
         />
 
         <MediaRow

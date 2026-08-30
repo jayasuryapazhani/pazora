@@ -11,13 +11,15 @@ import {
   MediaCard,
 } from "@/components/media/media-card";
 import {
+  MediaProgress,
+} from "@/components/media/media-progress";
+import {
   getJellyfinContext,
 } from "@/lib/auth/jellyfin-context";
 import {
   getMediaDetailsData,
 } from "@/lib/jellyfin/media";
 import {
-  formatProgress,
   formatRating,
   formatRuntime,
 } from "@/lib/utils/media-format";
@@ -32,6 +34,11 @@ type TitlePageProps = {
   params: Promise<{
     id: string;
   }>;
+};
+
+type Fact = {
+  label: string;
+  value: string;
 };
 
 export const dynamic =
@@ -79,6 +86,148 @@ function displayType(
   }
 
   return type;
+}
+
+function titleSizeClass(
+  title: string,
+): string {
+  if (title.length >= 46) {
+    return (
+      "text-[clamp(2.2rem,4.2vw,4.2rem)]"
+    );
+  }
+
+  if (title.length >= 30) {
+    return (
+      "text-[clamp(2.45rem,4.7vw,4.6rem)]"
+    );
+  }
+
+  return (
+    "text-[clamp(2.7rem,5vw,4.9rem)]"
+  );
+}
+
+function formatPremiereDate(
+  value: string | null,
+): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat(
+    "en",
+    {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: "UTC",
+    },
+  ).format(date);
+}
+
+function buildFacts(
+  details: MediaDetailsData,
+): Fact[] {
+  const item =
+    details.item;
+
+  const facts: Fact[] = [];
+
+  const originalTitle =
+    details.metadata.originalTitle;
+
+  if (
+    originalTitle &&
+    originalTitle !== item.name
+  ) {
+    facts.push({
+      label: "Original title",
+      value: originalTitle,
+    });
+  }
+
+  const premiere =
+    formatPremiereDate(
+      details.metadata.premiereDate,
+    );
+
+  if (premiere) {
+    facts.push({
+      label: "Premiere",
+      value: premiere,
+    });
+  }
+
+  const community =
+    formatRating(
+      item.communityRating,
+    );
+
+  if (community) {
+    facts.push({
+      label:
+        "Community rating",
+      value: `${community} / 10`,
+    });
+  }
+
+  if (
+    details.metadata.criticRating !==
+    null
+  ) {
+    facts.push({
+      label: "Critic rating",
+      value:
+        `${details.metadata.criticRating}`,
+    });
+  }
+
+  if (
+    details.metadata.childCount !==
+    null &&
+    details.metadata.childCount > 0
+  ) {
+    facts.push({
+      label: "Titles",
+      value:
+        `${details.metadata.childCount}`,
+    });
+  }
+
+  if (item.user.favorite) {
+    facts.push({
+      label: "Library status",
+      value: "Favorite",
+    });
+  } else if (item.user.played) {
+    facts.push({
+      label: "Watch status",
+      value: "Watched",
+    });
+  } else if (
+    item.user.playedPercentage !==
+      null &&
+    item.user.playedPercentage > 0
+  ) {
+    facts.push({
+      label: "Watch status",
+      value: "In progress",
+    });
+  }
+
+  return facts;
 }
 
 export default async function TitlePage({
@@ -187,11 +336,6 @@ export default async function TitlePage({
       item.communityRating,
     );
 
-  const progress =
-    formatProgress(
-      item.user.playedPercentage,
-    );
-
   const tagline =
     details.metadata.taglines[0] ??
     null;
@@ -204,6 +348,9 @@ export default async function TitlePage({
       " • ",
     );
 
+  const facts =
+    buildFacts(details);
+
   return (
     <main className="min-h-screen bg-[#0b0b0d] text-white">
       <AppHeader
@@ -213,7 +360,7 @@ export default async function TitlePage({
         showCollections={false}
       />
 
-      <section className="relative min-h-[34rem] overflow-hidden pt-[var(--pazora-header-height)] sm:min-h-[40rem] lg:min-h-[44rem]">
+      <section className="relative min-h-[35rem] overflow-hidden pt-[var(--pazora-header-height)] sm:min-h-[40rem] lg:min-h-[44rem]">
         {backdrop ? (
           <div
             role="img"
@@ -230,20 +377,20 @@ export default async function TitlePage({
 
         <div
           aria-hidden="true"
-          className="absolute inset-0 bg-gradient-to-r from-[#09090b] via-[#09090b]/75 to-black/10"
+          className="absolute inset-0 bg-gradient-to-r from-[#09090b] via-[#09090b]/77 to-black/10"
         />
 
         <div
           aria-hidden="true"
-          className="absolute inset-x-0 bottom-0 h-[65%] bg-gradient-to-t from-[#0b0b0d] via-[#0b0b0d]/75 to-transparent"
+          className="absolute inset-x-0 bottom-0 h-[68%] bg-gradient-to-t from-[#0b0b0d] via-[#0b0b0d]/78 to-transparent"
         />
 
-        <div className="pazora-page-gutter relative z-10 flex min-h-[34rem] items-end pb-16 pt-24 sm:min-h-[40rem] sm:pb-20 lg:min-h-[44rem]">
-          <div className="max-w-[680px]">
+        <div className="pazora-page-gutter relative z-10 flex min-h-[35rem] items-end pb-16 pt-24 sm:min-h-[40rem] sm:pb-20 lg:min-h-[44rem]">
+          <div className="max-w-[700px]">
             <Link
               href="/browse"
               prefetch={false}
-              className="mb-8 inline-flex items-center gap-2 text-xs font-medium text-white/55 transition hover:text-white"
+              className="mb-8 inline-flex items-center gap-2 text-xs font-medium text-white/55 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
             >
               <span
                 aria-hidden="true"
@@ -260,7 +407,14 @@ export default async function TitlePage({
               )}
             </p>
 
-            <h1 className="mt-3 max-w-[17ch] text-[clamp(2.5rem,5vw,4.7rem)] font-bold leading-[0.98] tracking-[-0.045em] text-white [text-shadow:0_5px_28px_rgba(0,0,0,0.5)]">
+            <h1
+              className={[
+                "mt-3 max-w-[18ch] text-balance font-bold leading-[0.98] tracking-[-0.045em] text-white [text-shadow:0_5px_28px_rgba(0,0,0,0.5)]",
+                titleSizeClass(
+                  item.name,
+                ),
+              ].join(" ")}
+            >
               {item.name}
             </h1>
 
@@ -288,62 +442,87 @@ export default async function TitlePage({
                   ★ {communityRating}
                 </span>
               ) : null}
+            </div>
 
-              {progress ? (
-                <span className="text-[#ef6079]">
-                  {progress}
-                </span>
-              ) : null}
+            <div className="mt-4">
+              <MediaProgress
+                percentage={
+                  item.user
+                    .playedPercentage
+                }
+              />
             </div>
 
             {tagline ? (
-              <p className="mt-5 text-sm font-medium italic text-white/55">
+              <p className="mt-5 text-sm font-medium italic leading-6 text-white/55">
                 {tagline}
               </p>
             ) : null}
 
             {item.overview ? (
-              <p className="mt-5 max-w-[62ch] text-[15px] leading-7 text-white/70 sm:text-base">
+              <p className="mt-5 max-w-[62ch] text-[15px] leading-7 text-white/72 sm:text-base">
                 {item.overview}
               </p>
             ) : null}
 
-            <div className="mt-6 space-y-2 text-sm leading-6 text-white/45">
-              {genres ? (
-                <p>
-                  <span className="text-white/70">
-                    Genres:
-                  </span>{" "}
-                  {genres}
-                </p>
-              ) : null}
-
-              {studios ? (
-                <p>
-                  <span className="text-white/70">
-                    Studios:
-                  </span>{" "}
-                  {studios}
-                </p>
-              ) : null}
-
-              {item.seriesName ? (
-                <p>
-                  <span className="text-white/70">
-                    Series:
-                  </span>{" "}
-                  {item.seriesName}
-                </p>
-              ) : null}
-            </div>
+            {genres ? (
+              <p className="mt-5 text-sm leading-6 text-white/48">
+                <span className="text-white/72">
+                  Genres:
+                </span>{" "}
+                {genres}
+              </p>
+            ) : null}
           </div>
         </div>
       </section>
 
-      <div className="relative z-10 -mt-4 pb-24">
+      <div className="relative z-10 pb-24">
+        {facts.length > 0 ||
+        studios ? (
+          <section className="pazora-page-gutter border-t border-white/[0.06] py-10 sm:py-12">
+            <h2 className="text-xl font-semibold tracking-tight text-white">
+              About {item.name}
+            </h2>
+
+            {facts.length > 0 ? (
+              <dl className="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:max-w-4xl lg:grid-cols-3">
+                {facts.map(
+                  (fact) => (
+                    <div
+                      key={fact.label}
+                      className="min-w-0"
+                    >
+                      <dt className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/32">
+                        {fact.label}
+                      </dt>
+
+                      <dd className="mt-1.5 break-words text-sm leading-6 text-white/72">
+                        {fact.value}
+                      </dd>
+                    </div>
+                  ),
+                )}
+              </dl>
+            ) : null}
+
+            {studios ? (
+              <div className="mt-7 max-w-4xl border-t border-white/[0.05] pt-6">
+                <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/32">
+                  Studios
+                </p>
+
+                <p className="mt-2 text-sm leading-6 text-white/52">
+                  {studios}
+                </p>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         {details.collectionItems.items
           .length > 0 ? (
-          <section className="mb-14">
+          <section className="mb-14 pt-2">
             <div className="pazora-page-gutter mb-4">
               <h2 className="text-xl font-semibold tracking-tight">
                 In this collection
@@ -366,7 +545,7 @@ export default async function TitlePage({
 
         {details.seasons.items.length >
         0 ? (
-          <section className="pazora-page-gutter">
+          <section className="pazora-page-gutter pt-2">
             <h2 className="text-xl font-semibold tracking-tight">
               Seasons
             </h2>
