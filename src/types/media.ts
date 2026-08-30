@@ -74,6 +74,27 @@ export type MediaSearchData = {
   query: string;
   page: MediaPage;
 };
+export type MediaDetailMetadata = {
+  originalTitle: string | null;
+  premiereDate: string | null;
+  criticRating: number | null;
+  taglines: string[];
+  studios: string[];
+  childCount: number | null;
+};
+
+export type MediaDetailsData = {
+  item: MediaItem;
+  metadata: MediaDetailMetadata;
+  collectionItems: MediaShelf;
+  seasons: MediaShelf;
+};
+
+export type MediaEpisodesData = {
+  seriesId: string;
+  seasonId: string;
+  episodes: MediaShelf;
+};
 export type MediaHomeData = {
   libraries: MediaLibrary[];
   continueWatching: MediaShelf;

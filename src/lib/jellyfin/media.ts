@@ -1,5 +1,7 @@
 import {
   getItemsApi,
+  getTvShowsApi,
+  getUserLibraryApi,
   getUserViewsApi,
 } from "@jellyfin/sdk/lib/utils/api/index.js";
 import {
@@ -23,6 +25,9 @@ import {
 import type {
   MediaBrowseData,
   MediaBrowseKind,
+  MediaDetailMetadata,
+  MediaDetailsData,
+  MediaEpisodesData,
   MediaHomeData,
   MediaItem,
   MediaLibrary,
@@ -537,5 +542,218 @@ export async function getMediaSearchData(
   return {
     query,
     page,
+  };
+}
+function createEmptyMediaShelf(): MediaShelf {
+  return {
+    items: [],
+    total: 0,
+  };
+}
+
+function normalizeDetailMetadata(
+  item: BaseItemDto,
+): MediaDetailMetadata {
+  const studios =
+    (item.Studios ?? [])
+      .map(
+        (studio) =>
+          studio.Name?.trim() ?? "",
+      )
+      .filter(
+        (name) =>
+          name.length > 0,
+      );
+
+  const taglines =
+    (item.Taglines ?? [])
+      .map(
+        (tagline) =>
+          tagline.trim(),
+      )
+      .filter(
+        (tagline) =>
+          tagline.length > 0,
+      );
+
+  return {
+    originalTitle:
+      item.OriginalTitle?.trim() ||
+      null,
+    premiereDate:
+      item.PremiereDate ?? null,
+    criticRating:
+      item.CriticRating ?? null,
+    taglines,
+    studios,
+    childCount:
+      item.ChildCount ?? null,
+  };
+}
+
+const supportedDetailItemTypes = [
+  BaseItemKind.Movie,
+  BaseItemKind.Series,
+  BaseItemKind.Episode,
+  BaseItemKind.BoxSet,
+] as const;
+
+const collectionChildItemTypes = [
+  BaseItemKind.Movie,
+  BaseItemKind.Series,
+  BaseItemKind.Episode,
+  BaseItemKind.BoxSet,
+] as const;
+
+export async function getMediaDetailsData(
+  context: AuthenticatedJellyfinContext,
+  itemId: string,
+): Promise<MediaDetailsData> {
+  const api =
+    createAuthenticatedJellyfinApi(
+      context.accessToken,
+      context.deviceId,
+    );
+
+  const itemResponse =
+    await getUserLibraryApi(api).getItem({
+      itemId,
+      userId: context.user.id,
+    });
+
+  const item =
+    normalizeMediaItem(
+      itemResponse.data,
+    );
+
+  if (!item) {
+    throw new Error(
+      "Jellyfin returned an unusable media item.",
+    );
+  }
+
+  if (
+    !supportedDetailItemTypes.includes(
+      item.type as
+        (typeof supportedDetailItemTypes)[number],
+    )
+  ) {
+    throw new Error(
+      `Unsupported media detail type: ${item.type}`,
+    );
+  }
+
+  let collectionItems =
+    createEmptyMediaShelf();
+
+  let seasons =
+    createEmptyMediaShelf();
+
+  if (item.type === BaseItemKind.BoxSet) {
+    const collectionResponse =
+      await getItemsApi(api).getItems({
+        userId: context.user.id,
+        parentId: item.id,
+        recursive: false,
+        includeItemTypes: [
+          ...collectionChildItemTypes,
+        ],
+        collapseBoxSetItems: false,
+        fields: [...mediaFields],
+        sortBy: [
+          ItemSortBy.SortName,
+        ],
+        sortOrder: [
+          SortOrder.Ascending,
+        ],
+        enableUserData: true,
+        enableImages: true,
+        imageTypeLimit: 2,
+        enableTotalRecordCount: true,
+      });
+
+    collectionItems =
+      assertShelfTypes(
+        "Collection children",
+        normalizeShelf(
+          collectionResponse.data,
+        ),
+        collectionChildItemTypes,
+      );
+  }
+
+  if (item.type === BaseItemKind.Series) {
+    const seasonsResponse =
+      await getTvShowsApi(api).getSeasons({
+        seriesId: item.id,
+        userId: context.user.id,
+        fields: [...mediaFields],
+        isMissing: false,
+        enableImages: true,
+        imageTypeLimit: 2,
+        enableUserData: true,
+      });
+
+    seasons =
+      assertShelfTypes(
+        "Series seasons",
+        normalizeShelf(
+          seasonsResponse.data,
+        ),
+        [
+          BaseItemKind.Season,
+        ],
+      );
+  }
+
+  return {
+    item,
+    metadata:
+      normalizeDetailMetadata(
+        itemResponse.data,
+      ),
+    collectionItems,
+    seasons,
+  };
+}
+
+export async function getMediaEpisodesData(
+  context: AuthenticatedJellyfinContext,
+  seriesId: string,
+  seasonId: string,
+): Promise<MediaEpisodesData> {
+  const api =
+    createAuthenticatedJellyfinApi(
+      context.accessToken,
+      context.deviceId,
+    );
+
+  const episodesResponse =
+    await getTvShowsApi(api).getEpisodes({
+      seriesId,
+      userId: context.user.id,
+      fields: [...mediaFields],
+      seasonId,
+      isMissing: false,
+      enableImages: true,
+      imageTypeLimit: 2,
+      enableUserData: true,
+    });
+
+  const episodes =
+    assertShelfTypes(
+      "Series episodes",
+      normalizeShelf(
+        episodesResponse.data,
+      ),
+      [
+        BaseItemKind.Episode,
+      ],
+    );
+
+  return {
+    seriesId,
+    seasonId,
+    episodes,
   };
 }
