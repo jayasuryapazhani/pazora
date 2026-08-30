@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 import { getPublicSystemInfo } from "@/lib/jellyfin/server";
 
@@ -14,8 +14,8 @@ export async function GET() {
       version: info.Version ?? undefined,
       productName: info.ProductName ?? undefined,
     });
-  } catch (error) {
-    console.error("Jellyfin status check failed:", error);
+  } catch {
+    console.warn("Jellyfin status check failed.");
 
     return NextResponse.json(
       {

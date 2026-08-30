@@ -120,10 +120,12 @@ export async function POST(
     );
 
     return response;
-  } catch (error) {
-    console.error(
-      "Jellyfin login failed:",
-      error,
+  } catch {
+    // Never log the authentication error object here.
+    // HTTP client errors can include request payloads
+    // containing usernames and passwords.
+    console.warn(
+      "Jellyfin login attempt failed.",
     );
 
     return NextResponse.json(

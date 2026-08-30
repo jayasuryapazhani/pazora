@@ -69,12 +69,14 @@ async function revokeSession(
       accessToken,
       deviceId,
     );
-  } catch (error) {
+  } catch {
     // We still clear the local session even if Jellyfin
     // already considers the token invalid.
+    //
+    // Do not log the underlying HTTP error object because
+    // it may contain authentication headers/access tokens.
     console.warn(
-      "Unable to revoke Jellyfin session:",
-      error,
+      "Unable to revoke Jellyfin session.",
     );
   }
 }
