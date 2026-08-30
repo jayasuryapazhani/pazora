@@ -1,26 +1,131 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0b0b0d;
+  --foreground: #f5f5f5;
+
+  --pazora-bg: #0b0b0d;
+  --pazora-surface: #151518;
+  --pazora-surface-raised: #1d1d21;
+
+  --pazora-text: #f5f5f5;
+  --pazora-text-secondary: #b5b5ba;
+  --pazora-text-muted: #85858d;
+  --pazora-text-disabled: #5f5f65;
+
+  --pazora-accent: #d3203f;
+  --pazora-accent-hover: #eb294b;
+  --pazora-accent-pressed: #b71934;
+
+  --pazora-header-height: 4.5rem;
+  --pazora-page-gutter: clamp(1.25rem, 3.9vw, 5rem);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  min-height: 100%;
+  background: var(--pazora-bg);
+  color-scheme: dark;
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100%;
+  margin: 0;
+  overflow-x: hidden;
+  background: var(--pazora-bg);
+  color: var(--pazora-text);
+  font-family:
+    var(--font-geist-sans),
+    Arial,
+    Helvetica,
+    sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: rgba(211, 32, 63, 0.4);
+  color: #ffffff;
+}
+
+.pazora-page-gutter {
+  padding-inline: var(--pazora-page-gutter);
+}
+
+.pazora-scrollbar-hidden {
+  scrollbar-width: none;
+}
+
+.pazora-scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+.pazora-hero-enter {
+  animation:
+    pazora-hero-enter 520ms
+    cubic-bezier(0.22, 1, 0.36, 1)
+    both;
+}
+
+.pazora-content-enter {
+  animation:
+    pazora-content-enter 460ms
+    90ms
+    cubic-bezier(0.22, 1, 0.36, 1)
+    both;
+}
+
+@keyframes pazora-hero-enter {
+  from {
+    opacity: 0;
+    transform: scale(1.015);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pazora-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

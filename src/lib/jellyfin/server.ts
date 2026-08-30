@@ -44,7 +44,7 @@ export function createAuthenticatedJellyfinApi(
 ) {
   const api = createJellyfinApi(
     deviceId,
-    "Life of Priya Media Web",
+    `${appConfig.name} Web`,
   );
 
   api.accessToken = accessToken;
@@ -55,7 +55,7 @@ export function createAuthenticatedJellyfinApi(
 export async function getPublicSystemInfo() {
   const api = createJellyfinApi(
     "lifeofpriya-media-server",
-    "Life of Priya Media",
+    appConfig.name,
   );
 
   const response =
@@ -71,7 +71,7 @@ export async function authenticateUser(
 ) {
   const api = createJellyfinApi(
     deviceId,
-    "Life of Priya Media Web",
+    `${appConfig.name} Web`,
   );
 
   const response =
