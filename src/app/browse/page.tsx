@@ -1,43 +1,117 @@
-import { redirect } from "next/navigation";
+import Link from "next/link";
+import {
+  redirect,
+} from "next/navigation";
 
-import { LogoutButton } from "@/components/ui/logout-button";
-import { getValidatedSession } from "@/lib/auth/validated-session";
+import {
+  HomeContent,
+} from "@/components/home/home-content";
+import {
+  AppHeader,
+} from "@/components/layout/app-header";
+import {
+  getJellyfinContext,
+} from "@/lib/auth/jellyfin-context";
+import {
+  getMediaHomeData,
+} from "@/lib/jellyfin/media";
+import type {
+  MediaHomeData,
+} from "@/types/media";
 
 export const metadata = {
-  title: "Browse",
+  title: "Home",
 };
 
-export default async function BrowsePage() {
-  const session =
-    await getValidatedSession();
+export const dynamic =
+  "force-dynamic";
 
-  if (session.status === "anonymous") {
+export default async function BrowsePage() {
+  const context =
+    await getJellyfinContext();
+
+  if (context.status === "anonymous") {
     redirect("/login");
   }
 
-  if (session.status === "invalid") {
+  if (context.status === "invalid") {
     redirect(
       "/api/auth/logout?reason=expired",
     );
   }
 
+  let media: MediaHomeData | null =
+    null;
+
+  try {
+    media =
+      await getMediaHomeData(
+        context,
+      );
+  } catch {
+    console.warn(
+      "Pazora home media query failed.",
+    );
+  }
+
+  if (media === null) {
+    return (
+      <main className="min-h-screen bg-[#0b0b0d] text-white">
+        <AppHeader
+          userName={context.user.name}
+          showMovies={false}
+          showSeries={false}
+          showCollections={false}
+        />
+
+        <section className="pazora-page-gutter flex min-h-screen items-center justify-center pt-20">
+          <div className="max-w-md text-center">
+            <p className="text-xs font-semibold tracking-[0.22em] text-[#d3203f]">
+              PAZORA
+            </p>
+
+            <h1 className="mt-4 text-2xl font-semibold tracking-tight text-white">
+              Something went wrong
+            </h1>
+
+            <p className="mt-3 text-sm leading-6 text-white/45">
+              Pazora could not load your
+              media library. Check that
+              Jellyfin is available and
+              try again.
+            </p>
+
+            <Link
+              href="/browse"
+              className="mt-6 inline-flex rounded-md bg-white px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-white/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            >
+              Retry
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black px-6 text-white">
-      <div className="text-center">
-        <p className="text-xs uppercase tracking-[0.35em] text-amber-200/50">
-          Life of Priya Media
-        </p>
+    <main className="min-h-screen bg-[#0b0b0d] text-white">
+      <AppHeader
+        userName={context.user.name}
+        showMovies={
+          media.movies.items.length > 0
+        }
+        showSeries={
+          media.series.items.length > 0
+        }
+        showCollections={
+          media.collections.items.length >
+          0
+        }
+      />
 
-        <h1 className="mt-4 text-4xl font-semibold tracking-tight">
-          Welcome, {session.user.name}
-        </h1>
-
-        <p className="mt-4 text-sm text-white/45">
-          Your Jellyfin session is verified.
-        </p>
-
-        <LogoutButton />
-      </div>
+      <HomeContent
+        media={media}
+      />
     </main>
   );
 }

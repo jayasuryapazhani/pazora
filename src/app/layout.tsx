@@ -1,5 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import {
+  Geist,
+  Geist_Mono,
+} from "next/font/google";
+
+import {
+  appConfig,
+} from "@/lib/config";
+
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,19 +22,24 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Life of Priya Media",
-    template: "%s | Life of Priya Media",
+    default: appConfig.name,
+    template: `%s | ${appConfig.name}`,
   },
-  description: "Personal streaming library.",
+  description: appConfig.description,
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      data-scroll-behavior="smooth"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full">
+        {children}
+      </body>
     </html>
   );
 }
