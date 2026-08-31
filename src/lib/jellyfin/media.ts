@@ -204,6 +204,7 @@ export async function getMediaHomeData(
   const [
     librariesResponse,
     continueWatchingResponse,
+    favoritesResponse,
     recentlyAddedResponse,
     moviesResponse,
     seriesResponse,
@@ -222,6 +223,30 @@ export async function getMediaHomeData(
       includeItemTypes: [
         BaseItemKind.Movie,
         BaseItemKind.Episode,
+      ],
+      enableUserData: true,
+      enableImages: true,
+      imageTypeLimit: 2,
+      enableTotalRecordCount: true,
+    }),
+
+    itemsApi.getItems({
+      userId: context.user.id,
+      recursive: true,
+      limit: 24,
+      includeItemTypes: [
+        BaseItemKind.Movie,
+        BaseItemKind.Series,
+        BaseItemKind.BoxSet,
+      ],
+      collapseBoxSetItems: false,
+      fields: [...mediaFields],
+      isFavorite: true,
+      sortBy: [
+        ItemSortBy.SortName,
+      ],
+      sortOrder: [
+        SortOrder.Ascending,
       ],
       enableUserData: true,
       enableImages: true,
@@ -329,6 +354,19 @@ export async function getMediaHomeData(
         [
           BaseItemKind.Movie,
           BaseItemKind.Episode,
+        ],
+      ),
+
+    favorites:
+      assertShelfTypes(
+        "My Favorites",
+        normalizeShelf(
+          favoritesResponse.data,
+        ),
+        [
+          BaseItemKind.Movie,
+          BaseItemKind.Series,
+          BaseItemKind.BoxSet,
         ],
       ),
 

@@ -64,6 +64,16 @@ function buildHeroSlides(
         }),
       ),
 
+    ...media.favorites.items
+      .filter(canUseAsHero)
+      .map(
+        (item) => ({
+          item,
+          sourceLabel:
+            "My Favorite",
+        }),
+      ),
+
     ...media.recentlyAdded.items
       .filter(canUseAsHero)
       .map(
@@ -343,6 +353,14 @@ export function HomeContent({
           }
           variant="landscape"
           action="resume"
+        />
+
+        <MediaRow
+          id="my-favorites"
+          title="My Favorites"
+          items={
+            media.favorites.items
+          }
         />
 
         <MediaRow
