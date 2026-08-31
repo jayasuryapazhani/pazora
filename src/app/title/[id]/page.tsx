@@ -473,6 +473,27 @@ export default async function TitlePage({
               />
             </div>
 
+            {item.type === "Movie" ||
+            item.type === "Episode" ? (
+              <div className="mt-6">
+                <Link
+                  href={`/watch/${item.id}`}
+                  prefetch={false}
+                  className="inline-flex items-center gap-2 rounded-md bg-white px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-white/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                >
+                  <span aria-hidden="true">
+                    {"\u25B6"}
+                  </span>
+
+                  {item.user
+                    .playbackPositionTicks >
+                  0
+                    ? "Resume"
+                    : "Play"}
+                </Link>
+              </div>
+            ) : null}
+
             {tagline ? (
               <p className="mt-5 text-sm font-medium italic leading-6 text-white/55">
                 {tagline}
