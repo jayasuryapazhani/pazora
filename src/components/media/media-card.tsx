@@ -16,6 +16,7 @@ type MediaCardProps = {
   variant: "poster" | "landscape";
   expanded: boolean;
   displayMode?: "row" | "library";
+  action?: "details" | "resume";
   onPointerEnter: () => void;
   onPointerLeave: () => void;
   onFocus: () => void;
@@ -75,6 +76,7 @@ export function MediaCard({
   variant,
   expanded,
   displayMode = "row",
+  action = "details",
   onPointerEnter,
   onPointerLeave,
   onFocus,
@@ -120,6 +122,19 @@ export function MediaCard({
   const libraryMode =
     displayMode === "library";
 
+  const resumeAction =
+    action === "resume";
+
+  const destination =
+    resumeAction
+      ? `/watch/${item.id}`
+      : `/title/${item.id}`;
+
+  const actionLabel =
+    resumeAction
+      ? "Resume"
+      : "Details";
+
   const isInProgress =
     !item.user.played &&
     progressValue > 0;
@@ -163,9 +178,13 @@ export function MediaCard({
 
   return (
     <Link
-      href={`/title/${item.id}`}
+      href={destination}
       prefetch={false}
-      aria-label={`Open ${item.name}`}
+      aria-label={
+        resumeAction
+          ? `Resume ${item.name}`
+          : `Open ${item.name}`
+      }
       onPointerEnter={
         onPointerEnter
       }
@@ -482,7 +501,7 @@ export function MediaCard({
 
             <div className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-white/82">
               <span>
-                Details
+                {actionLabel}
               </span>
 
               <span aria-hidden="true">{"\u2192"}</span>

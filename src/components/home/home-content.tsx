@@ -170,6 +170,7 @@ export function HomeContent({
             media.continueWatching.items
           }
           variant="landscape"
+          action="resume"
         />
 
         <MediaRow
