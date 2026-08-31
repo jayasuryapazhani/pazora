@@ -12,6 +12,9 @@ import {
   getPlaybackPlan,
 } from "@/lib/jellyfin/playback";
 import {
+  attachPlaybackTransport,
+} from "@/lib/jellyfin/playback-transport";
+import {
   parseMediaItemId,
 } from "@/lib/utils/media-query";
 
@@ -133,12 +136,18 @@ export async function GET(
       );
     }
 
-    const playback =
+    const basePlayback =
       await getPlaybackPlan(
         context,
         itemId.value,
         details.item.user
           .playbackPositionTicks,
+      );
+
+    const playback =
+      attachPlaybackTransport(
+        context,
+        basePlayback,
       );
 
     return NextResponse.json(

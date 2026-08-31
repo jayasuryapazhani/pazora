@@ -4,8 +4,8 @@ import {
 } from "next/navigation";
 
 import {
-  PlaybackFoundation,
-} from "@/components/player/playback-foundation";
+  PazoraVideoPlayer,
+} from "@/components/player/pazora-video-player";
 import {
   getJellyfinContext,
 } from "@/lib/auth/jellyfin-context";
@@ -15,6 +15,9 @@ import {
 import {
   getPlaybackPlan,
 } from "@/lib/jellyfin/playback";
+import {
+  attachPlaybackTransport,
+} from "@/lib/jellyfin/playback-transport";
 import {
   parseMediaItemId,
 } from "@/lib/utils/media-query";
@@ -138,33 +141,42 @@ export default async function WatchPage({
     | null = null;
 
   try {
-    playback =
+    const basePlayback =
       await getPlaybackPlan(
         context,
         details.item.id,
         details.item.user
           .playbackPositionTicks,
       );
+
+    playback =
+      attachPlaybackTransport(
+        context,
+        basePlayback,
+      );
   } catch {
     console.warn(
-      "Pazora playback preparation failed.",
+      "Pazora secure playback preparation failed.",
     );
   }
 
-  if (!playback) {
+  if (
+    !playback ||
+    !playback.transport.ready
+  ) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#070709] px-6 text-white">
+      <main className="flex min-h-screen items-center justify-center bg-black px-6 text-white">
         <div className="max-w-md text-center">
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#d3203f]">
             Pazora Player
           </p>
 
           <h1 className="mt-4 text-2xl font-semibold">
-            Unable to prepare playback
+            Unable to prepare secure playback
           </h1>
 
           <p className="mt-3 text-sm leading-6 text-white/40">
-            Jellyfin did not return a usable playback plan for this item.
+            Pazora could not create a secure browser-to-Jellyfin transport for this title.
           </p>
         </div>
       </main>
@@ -172,8 +184,8 @@ export default async function WatchPage({
   }
 
   return (
-    <main className="min-h-screen bg-[#070709]">
-      <PlaybackFoundation
+    <main className="min-h-screen bg-black">
+      <PazoraVideoPlayer
         item={details.item}
         playback={playback}
       />

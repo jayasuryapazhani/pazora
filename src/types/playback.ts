@@ -52,7 +52,16 @@ export type PlaybackSource = {
   subtitleTracks: PlaybackTrack[];
 };
 
-export type PlaybackTransportPlan = {
+export type PlaybackSubtitleOption = {
+  index: number;
+  label: string;
+  language: string | null;
+  isDefault: boolean;
+  isForced: boolean;
+  streamUrl: string;
+};
+
+export type PlaybackTransportPending = {
   ready: false;
   strategy:
     "secure-direct-jellyfin";
@@ -61,6 +70,37 @@ export type PlaybackTransportPlan = {
     false;
   reason: string;
 };
+
+export type PlaybackTransportReady = {
+  ready: true;
+  strategy:
+    "secure-direct-jellyfin";
+  authorization:
+    "encrypted-item-grant+caddy-forward-auth";
+  mediaBytesViaVercel: false;
+  compatibilityMode:
+    "hls-h264-aac";
+  streamUrl: string;
+  requestGrant: string;
+  expiresAt: string;
+  segmentContainer: "mp4";
+  videoCodec: "h264";
+  audioCodec: "aac";
+  reportMethod:
+    PlaybackReportMethod;
+  audioStreamIndex:
+    number | null;
+  runtimeTicks: number;
+  initialPositionTicks: number;
+  defaultSubtitleStreamIndex:
+    number | null;
+  subtitleTracks:
+    PlaybackSubtitleOption[];
+};
+
+export type PlaybackTransportPlan =
+  | PlaybackTransportPending
+  | PlaybackTransportReady;
 
 export type PlaybackPlan = {
   itemId: string;
