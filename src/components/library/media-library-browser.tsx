@@ -44,6 +44,12 @@ type BrowseApiResponse =
       error: string;
     };
 
+type FailedBrowseRequest = {
+  options: MediaBrowseOptions;
+  startIndex: number;
+  append: boolean;
+};
+
 const pageSize = 36;
 
 const movieSortOptions: ReadonlyArray<{
@@ -256,6 +262,20 @@ export function MediaLibraryBrowser({
     );
 
   const [
+    failedRequest,
+    setFailedRequest,
+  ] =
+    useState<FailedBrowseRequest | null>(
+      null,
+    );
+
+  const [
+    offline,
+    setOffline,
+  ] =
+    useState(false);
+
+  const [
     options,
     setOptions,
   ] =
@@ -308,6 +328,38 @@ export function MediaLibraryBrowser({
   useEffect(() => {
     return () => {
       requestRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleOffline() {
+      setOffline(true);
+    }
+
+    function handleOnline() {
+      setOffline(false);
+    }
+
+    window.addEventListener(
+      "offline",
+      handleOffline,
+    );
+
+    window.addEventListener(
+      "online",
+      handleOnline,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "offline",
+        handleOffline,
+      );
+
+      window.removeEventListener(
+        "online",
+        handleOnline,
+      );
     };
   }, []);
 
@@ -414,17 +466,27 @@ export function MediaLibraryBrowser({
           },
         );
 
-      const payload =
-        (
-          await response.json()
-        ) as BrowseApiResponse;
-
       if (
         response.status === 401
       ) {
         router.replace("/login");
         router.refresh();
         return;
+      }
+
+      let payload: BrowseApiResponse;
+
+      try {
+        payload =
+          (
+            await response.json()
+          ) as BrowseApiResponse;
+      } catch {
+        throw new Error(
+          response.ok
+            ? "Pazora received an invalid library response."
+            : "Jellyfin returned an unreadable response.",
+        );
       }
 
       if (!response.ok) {
@@ -444,6 +506,8 @@ export function MediaLibraryBrowser({
 
       const media =
         payload.media;
+
+      setFailedRequest(null);
 
       setPage(media.page);
 
@@ -471,6 +535,14 @@ export function MediaLibraryBrowser({
       ) {
         return;
       }
+
+      setFailedRequest({
+        options: {
+          ...nextOptions,
+        },
+        startIndex,
+        append,
+      });
 
       setError(
         caught instanceof Error
@@ -717,31 +789,56 @@ export function MediaLibraryBrowser({
           </div>
         </div>
 
-        {error ? (
-          <div className="mt-7 flex items-start justify-between gap-5 rounded-xl border border-red-400/15 bg-red-400/[0.06] px-5 py-4">
+        {error || offline ? (
+          <div
+            aria-live="polite"
+            className="mt-7 flex items-start justify-between gap-5 rounded-xl border border-red-400/15 bg-red-400/[0.06] px-5 py-4"
+          >
             <div>
               <p className="text-sm font-medium text-red-200">
-                Unable to update library
+                {offline
+                  ? "You are offline"
+                  : failedRequest
+                        ?.append
+                    ? "Unable to load more titles"
+                    : "Unable to update library"}
               </p>
 
               <p className="mt-1 text-xs leading-5 text-red-200/55">
-                {error}
+                {offline
+                  ? "Your current library remains available. Reconnect before requesting new data."
+                  : error}
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                void requestPage(
-                  options,
-                  0,
-                  false,
-                );
-              }}
-              className="shrink-0 text-xs font-semibold text-red-100 transition hover:text-white"
-            >
-              Retry
-            </button>
+            {error && !offline ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const failed =
+                    failedRequest;
+
+                  if (failed) {
+                    void requestPage(
+                      failed.options,
+                      failed.startIndex,
+                      failed.append,
+                    );
+
+                    return;
+                  }
+
+                  void requestPage(
+                    options,
+                    0,
+                    false,
+                  );
+                }}
+                className="shrink-0 text-xs font-semibold text-red-100 transition hover:text-white"
+              >
+                Retry
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -799,7 +896,8 @@ export function MediaLibraryBrowser({
               type="button"
               disabled={
                 loading ||
-                loadingMore
+                loadingMore ||
+                offline
               }
               onClick={() => {
                 void requestPage(
