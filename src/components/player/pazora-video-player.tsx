@@ -28,6 +28,61 @@ const jellyfinTicksPerSecond =
 const controlsHideDelayMs =
   2800;
 
+const playbackRateOptions = [
+  0.5,
+  0.75,
+  1,
+  1.25,
+  1.5,
+  2,
+] as const;
+
+type SubtitleSize =
+  | "small"
+  | "medium"
+  | "large";
+
+type SubtitleBackdrop =
+  | "shadow"
+  | "box"
+  | "clear";
+
+const subtitleSizeOptions: Array<{
+  label: string;
+  value: SubtitleSize;
+}> = [
+  {
+    label: "Small",
+    value: "small",
+  },
+  {
+    label: "Standard",
+    value: "medium",
+  },
+  {
+    label: "Large",
+    value: "large",
+  },
+];
+
+const subtitleBackdropOptions: Array<{
+  label: string;
+  value: SubtitleBackdrop;
+}> = [
+  {
+    label: "Shadow",
+    value: "shadow",
+  },
+  {
+    label: "Box",
+    value: "box",
+  },
+  {
+    label: "Clear",
+    value: "clear",
+  },
+];
+
 function ticksFromSeconds(
   seconds: number,
 ): number {
@@ -195,6 +250,22 @@ function FullscreenIcon() {
   );
 }
 
+function SettingsIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-6 w-6 fill-none stroke-current"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 15.25A3.25 3.25 0 1 0 12 8.75a3.25 3.25 0 0 0 0 6.5Z" />
+      <path d="M19.1 13.4a7.6 7.6 0 0 0 .05-2.8l2-1.55-2-3.45-2.48 1a8.6 8.6 0 0 0-2.42-1.4L13.9 2.5h-4l-.35 2.7a8.6 8.6 0 0 0-2.42 1.4l-2.48-1-2 3.45 2 1.55a7.6 7.6 0 0 0 .05 2.8l-2.05 1.6 2 3.45 2.55-1.03a8.4 8.4 0 0 0 2.35 1.35l.35 2.73h4l.35-2.73a8.4 8.4 0 0 0 2.35-1.35l2.55 1.03 2-3.45-2.05-1.6Z" />
+    </svg>
+  );
+}
+
 function SkipIcon({
   direction,
 }: {
@@ -254,6 +325,14 @@ export function PazoraVideoPlayer({
 
   const subtitleMenuOpenRef =
     useRef(false);
+
+  const settingsMenuOpenRef =
+    useRef(false);
+
+  const hlsRef =
+    useRef<Hls | null>(
+      null,
+    );
 
 
   const transport =
@@ -347,6 +426,14 @@ export function PazoraVideoPlayer({
     useState(false);
 
   const [
+    playerError,
+    setPlayerError,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const [
     controlsVisible,
     setControlsVisible,
   ] =
@@ -369,6 +456,34 @@ export function PazoraVideoPlayer({
     setSubtitleMenuOpen,
   ] =
     useState(false);
+
+  const [
+    settingsMenuOpen,
+    setSettingsMenuOpen,
+  ] =
+    useState(false);
+
+  const [
+    playbackRate,
+    setPlaybackRate,
+  ] =
+    useState(1);
+
+  const [
+    subtitleSize,
+    setSubtitleSize,
+  ] =
+    useState<SubtitleSize>(
+      "medium",
+    );
+
+  const [
+    subtitleBackdrop,
+    setSubtitleBackdrop,
+  ] =
+    useState<SubtitleBackdrop>(
+      "shadow",
+    );
 
   const [
     selectedSubtitleIndex,
@@ -421,6 +536,8 @@ export function PazoraVideoPlayer({
                 video &&
                 !video.paused &&
                 !subtitleMenuOpenRef
+                  .current &&
+                !settingsMenuOpenRef
                   .current
               ) {
                 setControlsVisible(
@@ -747,6 +864,14 @@ export function PazoraVideoPlayer({
           !subtitleMenuOpenRef
             .current;
 
+        settingsMenuOpenRef
+          .current =
+          false;
+
+        setSettingsMenuOpen(
+          false,
+        );
+
         subtitleMenuOpenRef
           .current =
           next;
@@ -756,6 +881,111 @@ export function PazoraVideoPlayer({
         );
 
         revealControls();
+      },
+      [
+        revealControls,
+      ],
+    );
+
+  const toggleSettingsMenu =
+    useCallback(
+      () => {
+        const next =
+          !settingsMenuOpenRef
+            .current;
+
+        subtitleMenuOpenRef
+          .current =
+          false;
+
+        setSubtitleMenuOpen(
+          false,
+        );
+
+        settingsMenuOpenRef
+          .current =
+          next;
+
+        setSettingsMenuOpen(
+          next,
+        );
+
+        revealControls();
+      },
+      [
+        revealControls,
+      ],
+    );
+
+  const changePlaybackRate =
+    useCallback(
+      (
+        nextRate: number,
+      ) => {
+        const video =
+          videoRef.current;
+
+        if (video) {
+          video.playbackRate =
+            nextRate;
+        }
+
+        setPlaybackRate(
+          nextRate,
+        );
+
+        revealControls();
+      },
+      [
+        revealControls,
+      ],
+    );
+
+  const retryPlayback =
+    useCallback(
+      () => {
+        const video =
+          videoRef.current;
+
+        const hls =
+          hlsRef.current;
+
+        if (
+          !video ||
+          !hls
+        ) {
+          return;
+        }
+
+        setPlayerError(
+          null,
+        );
+
+        setIsBuffering(
+          true,
+        );
+
+        revealControls();
+
+        hls.startLoad(
+          Number.isFinite(
+            video.currentTime,
+          )
+            ? video.currentTime
+            : -1,
+        );
+
+        void video
+          .play()
+          .catch(() => {
+            setIsBuffering(
+              false,
+            );
+
+            setPlayerError(
+              "Playback could not be resumed. Try again.",
+            );
+          });
       },
       [
         revealControls,
@@ -830,6 +1060,9 @@ export function PazoraVideoPlayer({
           },
         });
 
+      hlsRef.current =
+        hls;
+
       const handleMediaAttached =
         () => {
           hls.loadSource(
@@ -849,11 +1082,20 @@ export function PazoraVideoPlayer({
             return;
           }
 
+          setIsBuffering(
+            false,
+          );
+
           if (
             data.type ===
             Hls.ErrorTypes.NETWORK_ERROR
           ) {
+            setPlayerError(
+              "The video connection was interrupted.",
+            );
+
             hls.startLoad();
+
             return;
           }
 
@@ -861,8 +1103,18 @@ export function PazoraVideoPlayer({
             data.type ===
             Hls.ErrorTypes.MEDIA_ERROR
           ) {
+            setPlayerError(
+              "The browser encountered a media playback error.",
+            );
+
             hls.recoverMediaError();
+
+            return;
           }
+
+          setPlayerError(
+            "Playback stopped because of an unrecoverable stream error.",
+          );
         };
 
       hls.on(
@@ -889,6 +1141,14 @@ export function PazoraVideoPlayer({
           Hls.Events.ERROR,
           handleHlsError,
         );
+
+        if (
+          hlsRef.current ===
+          hls
+        ) {
+          hlsRef.current =
+            null;
+        }
 
         hls.destroy();
       };
@@ -1060,7 +1320,28 @@ export function PazoraVideoPlayer({
   const overlayVisible =
     controlsVisible ||
     !isPlaying ||
-    subtitleMenuOpen;
+    subtitleMenuOpen ||
+    settingsMenuOpen ||
+    playerError !== null;
+
+  const subtitleFontSize =
+    subtitleSize === "small"
+      ? "2.1vh"
+      : subtitleSize === "large"
+        ? "3.2vh"
+        : "2.6vh";
+
+  const subtitleCueBackground =
+    subtitleBackdrop === "box"
+      ? "rgba(0, 0, 0, 0.78)"
+      : "transparent";
+
+  const subtitleCueShadow =
+    subtitleBackdrop === "shadow"
+      ? "0 2px 3px rgba(0,0,0,0.98), 0 0 9px rgba(0,0,0,0.9)"
+      : subtitleBackdrop === "box"
+        ? "0 1px 2px rgba(0,0,0,0.9)"
+        : "none";
 
   return (
     <section
@@ -1076,12 +1357,26 @@ export function PazoraVideoPlayer({
       }
       className="group relative flex h-screen w-screen select-none items-center justify-center overflow-hidden bg-black text-white"
     >
+      <style>
+        {`
+          .pazora-video::cue {
+            color: #ffffff;
+            background: ${subtitleCueBackground};
+            font-size: ${subtitleFontSize};
+            font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+            font-weight: 600;
+            line-height: 1.25;
+            text-shadow: ${subtitleCueShadow};
+          }
+        `}
+      </style>
+
       <video
         ref={videoRef}
         crossOrigin="anonymous"
         playsInline
         preload="metadata"
-        className="h-full w-full bg-black object-contain"
+        className="pazora-video h-full w-full bg-black object-contain"
         aria-label={`Play ${item.name}`}
         onClick={
           togglePlay
@@ -1096,6 +1391,10 @@ export function PazoraVideoPlayer({
 
           setIsBuffering(
             false,
+          );
+
+          setPlayerError(
+            null,
           );
 
           stoppedRef.current =
@@ -1208,6 +1507,10 @@ export function PazoraVideoPlayer({
           }
         }}
         onError={() => {
+          setPlayerError(
+            "The browser could not continue playing this stream.",
+          );
+
           setIsBuffering(
             false,
           );
@@ -1279,9 +1582,34 @@ export function PazoraVideoPlayer({
         ) : null}
       </video>
 
-      {isBuffering ? (
+      {isBuffering &&
+      !playerError ? (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
           <div className="h-11 w-11 animate-spin rounded-full border-[3px] border-white/20 border-t-white" />
+        </div>
+      ) : null}
+
+      {playerError ? (
+        <div className="absolute inset-0 z-[45] flex items-center justify-center bg-black/55 px-6 backdrop-blur-[2px]">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#141414]/95 p-6 text-center shadow-2xl">
+            <p className="text-lg font-semibold tracking-[-0.02em]">
+              Playback interrupted
+            </p>
+
+            <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-white/60">
+              {playerError}
+            </p>
+
+            <button
+              type="button"
+              onClick={
+                retryPlayback
+              }
+              className="mt-5 inline-flex h-11 items-center justify-center rounded-full bg-white px-6 text-sm font-semibold text-black transition hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+            >
+              Retry playback
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -1474,7 +1802,7 @@ export function PazoraVideoPlayer({
                 skipBy(-10)
               }
               aria-label="Back 10 seconds"
-              className="hidden h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:inline-flex"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <SkipIcon direction="back" />
             </button>
@@ -1485,12 +1813,12 @@ export function PazoraVideoPlayer({
                 skipBy(10)
               }
               aria-label="Forward 10 seconds"
-              className="hidden h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:inline-flex"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <SkipIcon direction="forward" />
             </button>
 
-            <div className="ml-0 flex items-center gap-1 sm:ml-1">
+            <div className="ml-0 hidden items-center gap-1 sm:ml-1 sm:flex">
               <button
                 type="button"
                 onClick={
@@ -1561,6 +1889,136 @@ export function PazoraVideoPlayer({
           </div>
 
           <div className="relative flex items-center gap-1 sm:gap-2">
+            <button
+              type="button"
+              onClick={
+                toggleSettingsMenu
+              }
+              aria-label="Playback settings"
+              aria-expanded={
+                settingsMenuOpen
+              }
+              className={[
+                "inline-flex h-11 w-11 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
+                settingsMenuOpen
+                  ? "bg-white text-black"
+                  : "hover:bg-white/10",
+              ].join(" ")}
+            >
+              <SettingsIcon />
+            </button>
+
+            {settingsMenuOpen ? (
+              <div className="absolute bottom-14 right-12 max-h-[70vh] w-[min(22rem,calc(100vw-2.5rem))] overflow-y-auto rounded-2xl border border-white/10 bg-[#151515]/95 p-3 shadow-2xl backdrop-blur-xl">
+                <div className="px-2 pb-3 pt-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
+                    Playback speed
+                  </p>
+
+                  <div className="mt-2 grid grid-cols-3 gap-1.5">
+                    {playbackRateOptions.map(
+                      (rate) => (
+                        <button
+                          key={rate}
+                          type="button"
+                          onClick={() =>
+                            changePlaybackRate(
+                              rate,
+                            )
+                          }
+                          className={[
+                            "rounded-lg px-2 py-2 text-sm font-medium transition",
+                            playbackRate ===
+                            rate
+                              ? "bg-white text-black"
+                              : "bg-white/[0.05] text-white/70 hover:bg-white/10 hover:text-white",
+                          ].join(" ")}
+                        >
+                          {rate}x
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </div>
+
+                {transport
+                  .subtitleTracks
+                  .length > 0 ? (
+                  <div className="border-t border-white/10 px-2 pb-2 pt-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
+                      Subtitle size
+                    </p>
+
+                    <div className="mt-2 grid grid-cols-3 gap-1.5">
+                      {subtitleSizeOptions.map(
+                        (option) => (
+                          <button
+                            key={
+                              option.value
+                            }
+                            type="button"
+                            onClick={() => {
+                              setSubtitleSize(
+                                option.value,
+                              );
+
+                              revealControls();
+                            }}
+                            className={[
+                              "rounded-lg px-2 py-2 text-xs font-medium transition",
+                              subtitleSize ===
+                              option.value
+                                ? "bg-white text-black"
+                                : "bg-white/[0.05] text-white/70 hover:bg-white/10 hover:text-white",
+                            ].join(" ")}
+                          >
+                            {
+                              option.label
+                            }
+                          </button>
+                        ),
+                      )}
+                    </div>
+
+                    <p className="mt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
+                      Subtitle background
+                    </p>
+
+                    <div className="mt-2 grid grid-cols-3 gap-1.5">
+                      {subtitleBackdropOptions.map(
+                        (option) => (
+                          <button
+                            key={
+                              option.value
+                            }
+                            type="button"
+                            onClick={() => {
+                              setSubtitleBackdrop(
+                                option.value,
+                              );
+
+                              revealControls();
+                            }}
+                            className={[
+                              "rounded-lg px-2 py-2 text-xs font-medium transition",
+                              subtitleBackdrop ===
+                              option.value
+                                ? "bg-white text-black"
+                                : "bg-white/[0.05] text-white/70 hover:bg-white/10 hover:text-white",
+                            ].join(" ")}
+                          >
+                            {
+                              option.label
+                            }
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             <button
               type="button"
               onClick={
