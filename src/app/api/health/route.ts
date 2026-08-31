@@ -69,7 +69,55 @@ function validPlaybackGrantSecret(
   }
 }
 
-export async function GET() {
+async function jellyfinReachable(): Promise<boolean> {
+  const configured =
+    process.env
+      .JELLYFIN_SERVER_URL
+      ?.trim()
+      .replace(/\/$/, "");
+
+  if (!configured) {
+    return false;
+  }
+
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(
+      () => {
+        controller.abort();
+      },
+      3000,
+    );
+
+  try {
+    const response =
+      await fetch(
+        `${configured}/System/Info/Public`,
+        {
+          method: "GET",
+          cache: "no-store",
+          signal:
+            controller.signal,
+          headers: {
+            Accept:
+              "application/json",
+          },
+        },
+      );
+
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function GET(
+  request: Request,
+) {
   const checks = {
     jellyfinServerUrl:
       validHttpUrl(
@@ -96,10 +144,30 @@ export async function GET() {
       ),
   };
 
-  const ready =
+  const configuredReady =
     Object.values(
       checks,
     ).every(Boolean);
+
+  const url =
+    new URL(
+      request.url,
+    );
+
+  const deep =
+    url.searchParams.get(
+      "deep",
+    ) === "1";
+
+  const reachable =
+    deep &&
+    configuredReady
+      ? await jellyfinReachable()
+      : null;
+
+  const ready =
+    configuredReady &&
+    (!deep || reachable === true);
 
   return NextResponse.json(
     {
@@ -109,7 +177,19 @@ export async function GET() {
           ? "ok"
           : "not_ready",
       ready,
-      checks,
+      mode:
+        deep
+          ? "deep"
+          : "config",
+      checks: {
+        ...checks,
+        ...(deep
+          ? {
+              jellyfinReachable:
+                reachable === true,
+            }
+          : {}),
+      },
     },
     {
       status:
