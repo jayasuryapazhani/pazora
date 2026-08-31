@@ -330,6 +330,180 @@ function SkipIcon({
   );
 }
 
+type RemoteFocusDirection =
+  | "left"
+  | "right"
+  | "up"
+  | "down";
+
+const remoteFocusableSelector =
+  "button:not([disabled]),a[href]";
+
+function isRemoteFocusable(
+  element: HTMLElement,
+): boolean {
+  const rectangle =
+    element.getBoundingClientRect();
+
+  if (
+    rectangle.width <= 0 ||
+    rectangle.height <= 0
+  ) {
+    return false;
+  }
+
+  const style =
+    window.getComputedStyle(
+      element,
+    );
+
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden"
+  );
+}
+
+function focusRemoteNeighbor(
+  container: HTMLElement,
+  current: HTMLElement,
+  direction: RemoteFocusDirection,
+): boolean {
+  const currentRectangle =
+    current.getBoundingClientRect();
+
+  const currentX =
+    currentRectangle.left +
+    currentRectangle.width / 2;
+
+  const currentY =
+    currentRectangle.top +
+    currentRectangle.height / 2;
+
+  const candidates =
+    Array.from(
+      container.querySelectorAll<HTMLElement>(
+        remoteFocusableSelector,
+      ),
+    ).filter(
+      (candidate) =>
+        candidate !== current &&
+        isRemoteFocusable(
+          candidate,
+        ),
+    );
+
+  let best:
+    | HTMLElement
+    | null = null;
+
+  let bestScore =
+    Number.POSITIVE_INFINITY;
+
+  for (const candidate of candidates) {
+    const rectangle =
+      candidate.getBoundingClientRect();
+
+    const candidateX =
+      rectangle.left +
+      rectangle.width / 2;
+
+    const candidateY =
+      rectangle.top +
+      rectangle.height / 2;
+
+    const deltaX =
+      candidateX -
+      currentX;
+
+    const deltaY =
+      candidateY -
+      currentY;
+
+    let primaryDistance: number;
+    let secondaryDistance: number;
+
+    switch (direction) {
+      case "left":
+        if (deltaX >= -1) {
+          continue;
+        }
+
+        primaryDistance =
+          Math.abs(deltaX);
+
+        secondaryDistance =
+          Math.abs(deltaY);
+        break;
+
+      case "right":
+        if (deltaX <= 1) {
+          continue;
+        }
+
+        primaryDistance =
+          Math.abs(deltaX);
+
+        secondaryDistance =
+          Math.abs(deltaY);
+        break;
+
+      case "up":
+        if (deltaY >= -1) {
+          continue;
+        }
+
+        primaryDistance =
+          Math.abs(deltaY);
+
+        secondaryDistance =
+          Math.abs(deltaX);
+        break;
+
+      case "down":
+        if (deltaY <= 1) {
+          continue;
+        }
+
+        primaryDistance =
+          Math.abs(deltaY);
+
+        secondaryDistance =
+          Math.abs(deltaX);
+        break;
+    }
+
+    // Prefer movement primarily in the requested direction,
+    // while still allowing navigation between differently
+    // aligned rows and menu grids.
+    const score =
+      primaryDistance +
+      secondaryDistance * 3;
+
+    if (score < bestScore) {
+      best =
+        candidate;
+
+      bestScore =
+        score;
+    }
+  }
+
+  if (!best) {
+    return false;
+  }
+
+  best.focus({
+    preventScroll: true,
+  });
+
+  best.scrollIntoView({
+    block: "nearest",
+    inline: "nearest",
+  });
+
+  return true;
+}
+
 export function PazoraVideoPlayer({
   item,
   playback,
@@ -376,6 +550,16 @@ export function PazoraVideoPlayer({
 
   const settingsButtonRef =
     useRef<HTMLButtonElement | null>(
+      null,
+    );
+
+  const playButtonRef =
+    useRef<HTMLButtonElement | null>(
+      null,
+    );
+
+  const backLinkRef =
+    useRef<HTMLAnchorElement | null>(
       null,
     );
 
@@ -2008,6 +2192,43 @@ export function PazoraVideoPlayer({
         (
           event: KeyboardEvent,
         ) => {
+          const normalizedKey =
+            event.key.toLowerCase();
+
+          const remoteBackKey =
+            normalizedKey ===
+              "browserback" ||
+            normalizedKey ===
+              "goback";
+
+          if (remoteBackKey) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (
+              closePlayerMenus(
+                true,
+              )
+            ) {
+              return;
+            }
+
+            if (
+              document
+                .fullscreenElement ===
+              containerRef.current
+            ) {
+              toggleFullscreen();
+
+              return;
+            }
+
+            backLinkRef.current
+              ?.click();
+
+            return;
+          }
+
           if (
             event.key ===
             "Escape"
@@ -2033,6 +2254,77 @@ export function PazoraVideoPlayer({
             return;
           }
 
+          const container =
+            containerRef.current;
+
+          const activeElement =
+            document.activeElement instanceof
+              HTMLElement
+              ? document.activeElement
+              : null;
+
+          // Keep range controls fully native. Their arrow keys
+          // change seek/volume values and must not become remote
+          // focus-navigation commands.
+          const nativeRangeControl =
+            activeElement instanceof
+              HTMLInputElement &&
+            activeElement.type ===
+              "range";
+
+          if (nativeRangeControl) {
+            return;
+          }
+
+          const remoteDirection:
+            | RemoteFocusDirection
+            | null =
+            normalizedKey ===
+              "arrowleft"
+              ? "left"
+              : normalizedKey ===
+                  "arrowright"
+                ? "right"
+                : normalizedKey ===
+                    "arrowup"
+                  ? "up"
+                  : normalizedKey ===
+                      "arrowdown"
+                    ? "down"
+                    : null;
+
+          const remoteControlFocused =
+            container !== null &&
+            activeElement !== null &&
+            container.contains(
+              activeElement,
+            ) &&
+            activeElement.matches(
+              remoteFocusableSelector,
+            );
+
+          if (
+            remoteDirection &&
+            container &&
+            activeElement &&
+            remoteControlFocused
+          ) {
+            if (
+              focusRemoteNeighbor(
+                container,
+                activeElement,
+                remoteDirection,
+              )
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+
+              revealControls();
+            }
+
+            return;
+          }
+
           const targetElement =
             event.target instanceof
               Element
@@ -2048,9 +2340,12 @@ export function PazoraVideoPlayer({
             return;
           }
 
-          switch (
-            event.key.toLowerCase()
-          ) {
+          switch (normalizedKey) {
+            case "enter":
+              event.preventDefault();
+              togglePlay();
+              break;
+
             case " ":
             case "k":
               event.preventDefault();
@@ -2067,6 +2362,21 @@ export function PazoraVideoPlayer({
             case "l":
               event.preventDefault();
               skipBy(10);
+              break;
+
+            case "arrowup":
+            case "arrowdown":
+              event.preventDefault();
+
+              revealControls();
+
+              queueMicrotask(
+                () => {
+                  playButtonRef
+                    .current
+                    ?.focus();
+                },
+              );
               break;
 
             case "m":
@@ -2227,6 +2537,14 @@ export function PazoraVideoPlayer({
           .pazora-player input:focus-visible {
             outline: 2px solid #ffffff;
             outline-offset: 2px;
+          }
+
+          .pazora-player button:focus-visible,
+          .pazora-player a:focus-visible {
+            position: relative;
+            z-index: 1;
+            box-shadow:
+              0 0 0 4px rgba(255, 255, 255, 0.18);
           }
         `}
       </style>
@@ -2506,6 +2824,7 @@ export function PazoraVideoPlayer({
         ].join(" ")}
       >
         <Link
+          ref={backLinkRef}
           href={`/title/${item.id}`}
           prefetch={false}
           onClick={() => {
@@ -2644,6 +2963,7 @@ export function PazoraVideoPlayer({
         <div className="flex items-center justify-between gap-1 sm:gap-5">
           <div className="flex min-w-0 items-center gap-1 sm:gap-2">
             <button
+              ref={playButtonRef}
               type="button"
               onClick={
                 togglePlay
