@@ -1,3 +1,12 @@
+"use client";
+
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import {
   HomeHero,
 } from "@/components/home/home-hero";
@@ -16,12 +25,18 @@ type HomeContentProps = {
   media: MediaHomeData;
 };
 
+type HomeMediaResponse = {
+  authenticated?: boolean;
+  media?: MediaHomeData;
+};
+
 type BrowseTarget = {
   target: string;
   label: string;
 };
 
 const maximumHeroSlides = 8;
+const homeRefreshThrottleMs = 1_500;
 
 function canUseAsHero(
   item: MediaItem,
@@ -142,8 +157,165 @@ function findBrowseTarget(
 }
 
 export function HomeContent({
-  media,
+  media: initialMedia,
 }: HomeContentProps) {
+  const [
+    media,
+    setMedia,
+  ] =
+    useState(initialMedia);
+
+  const refreshInFlightRef =
+    useRef(false);
+
+  const lastRefreshAtRef =
+    useRef(0);
+
+  const mountedRef =
+    useRef(true);
+
+  const refreshMedia =
+    useCallback(
+      async (
+        force = false,
+      ) => {
+        if (
+          !mountedRef.current ||
+          document.visibilityState ===
+            "hidden" ||
+          refreshInFlightRef.current
+        ) {
+          return;
+        }
+
+        const now =
+          Date.now();
+
+        if (
+          !force &&
+          now -
+            lastRefreshAtRef.current <
+            homeRefreshThrottleMs
+        ) {
+          return;
+        }
+
+        refreshInFlightRef.current =
+          true;
+
+        lastRefreshAtRef.current =
+          now;
+
+        try {
+          const response =
+            await fetch(
+              "/api/media/home",
+              {
+                method:
+                  "GET",
+                credentials:
+                  "same-origin",
+                cache:
+                  "no-store",
+              },
+            );
+
+          if (!response.ok) {
+            return;
+          }
+
+          const payload =
+            (await response.json()) as
+              HomeMediaResponse;
+
+          if (
+            mountedRef.current &&
+            payload.authenticated ===
+              true &&
+            payload.media
+          ) {
+            setMedia(
+              payload.media,
+            );
+          }
+        } catch {
+          // Preserve the last successful home snapshot if Jellyfin
+          // is temporarily unavailable.
+        } finally {
+          refreshInFlightRef.current =
+            false;
+        }
+      },
+      [],
+    );
+
+  useEffect(
+    () => {
+      mountedRef.current =
+        true;
+
+      const handlePageShow =
+        () => {
+          void refreshMedia(
+            true,
+          );
+        };
+
+      const handleFocus =
+        () => {
+          void refreshMedia();
+        };
+
+      const handleVisibilityChange =
+        () => {
+          if (
+            document.visibilityState ===
+            "visible"
+          ) {
+            void refreshMedia();
+          }
+        };
+
+      window.addEventListener(
+        "pageshow",
+        handlePageShow,
+      );
+
+      window.addEventListener(
+        "focus",
+        handleFocus,
+      );
+
+      document.addEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
+
+      return () => {
+        mountedRef.current =
+          false;
+
+        window.removeEventListener(
+          "pageshow",
+          handlePageShow,
+        );
+
+        window.removeEventListener(
+          "focus",
+          handleFocus,
+        );
+
+        document.removeEventListener(
+          "visibilitychange",
+          handleVisibilityChange,
+        );
+      };
+    },
+    [
+      refreshMedia,
+    ],
+  );
+
   const heroSlides =
     buildHeroSlides(media);
 
