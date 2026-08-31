@@ -369,6 +369,16 @@ export function PazoraVideoPlayer({
   const settingsMenuOpenRef =
     useRef(false);
 
+  const subtitleButtonRef =
+    useRef<HTMLButtonElement | null>(
+      null,
+    );
+
+  const settingsButtonRef =
+    useRef<HTMLButtonElement | null>(
+      null,
+    );
+
   const hlsRef =
     useRef<Hls | null>(
       null,
@@ -683,13 +693,28 @@ export function PazoraVideoPlayer({
               const video =
                 videoRef.current;
 
+              const container =
+                containerRef.current;
+
+              const activeElement =
+                document.activeElement;
+
+              const keyboardFocusInsidePlayer =
+                activeElement instanceof
+                  HTMLElement &&
+                container?.contains(
+                  activeElement,
+                ) === true &&
+                activeElement !== video;
+
               if (
                 video &&
                 !video.paused &&
                 !subtitleMenuOpenRef
                   .current &&
                 !settingsMenuOpenRef
-                  .current
+                  .current &&
+                !keyboardFocusInsidePlayer
               ) {
                 setControlsVisible(
                   false,
@@ -989,49 +1014,103 @@ export function PazoraVideoPlayer({
           return;
         }
 
+        revealControls();
+
         if (
           document.fullscreenElement
         ) {
           void document
-            .exitFullscreen();
+            .exitFullscreen()
+            .catch(() => {
+              revealControls();
+            });
 
           return;
         }
 
         void container
-          .requestFullscreen();
+          .requestFullscreen()
+          .catch(() => {
+            setFullscreen(
+              false,
+            );
+
+            revealControls();
+          });
       },
-      [],
+      [
+        revealControls,
+      ],
+    );
+
+  const closePlayerMenus =
+    useCallback(
+      (
+        restoreFocus: boolean,
+      ): boolean => {
+        const settingsWasOpen =
+          settingsMenuOpenRef
+            .current;
+
+        const subtitlesWereOpen =
+          subtitleMenuOpenRef
+            .current;
+
+        if (
+          !settingsWasOpen &&
+          !subtitlesWereOpen
+        ) {
+          return false;
+        }
+
+        settingsMenuOpenRef
+          .current =
+          false;
+
+        subtitleMenuOpenRef
+          .current =
+          false;
+
+        setSettingsMenuOpen(
+          false,
+        );
+
+        setSubtitleMenuOpen(
+          false,
+        );
+
+        revealControls();
+
+        if (restoreFocus) {
+          const target =
+            settingsWasOpen
+              ? settingsButtonRef
+                  .current
+              : subtitleButtonRef
+                  .current;
+
+          queueMicrotask(
+            () => {
+              target?.focus();
+            },
+          );
+        }
+
+        return true;
+      },
+      [
+        revealControls,
+      ],
     );
 
   const handleVideoClick =
     useCallback(
       () => {
-        const hasOpenMenu =
-          subtitleMenuOpenRef
-            .current ||
-          settingsMenuOpenRef
-            .current;
-
-        if (hasOpenMenu) {
-          subtitleMenuOpenRef
-            .current =
-            false;
-
-          settingsMenuOpenRef
-            .current =
-            false;
-
-          setSubtitleMenuOpen(
+        if (
+          closePlayerMenus(
             false,
-          );
-
-          setSettingsMenuOpen(
-            false,
-          );
-
-          revealControls();
-
+          )
+        ) {
           return;
         }
 
@@ -1063,6 +1142,7 @@ export function PazoraVideoPlayer({
       },
       [
         clearControlsTimer,
+        closePlayerMenus,
         controlsVisible,
         isPlaying,
         revealControls,
@@ -1558,6 +1638,14 @@ export function PazoraVideoPlayer({
 
         revealControls();
 
+        queueMicrotask(
+          () => {
+            subtitleButtonRef
+              .current
+              ?.focus();
+          },
+        );
+
         const requiresTransportSwitch =
           currentTrack?.delivery ===
             "burn-in" ||
@@ -1920,17 +2008,43 @@ export function PazoraVideoPlayer({
         (
           event: KeyboardEvent,
         ) => {
-          const target =
-            event.target;
+          if (
+            event.key ===
+            "Escape"
+          ) {
+            if (
+              closePlayerMenus(
+                true,
+              )
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+
+            return;
+          }
 
           if (
-            target instanceof
-              HTMLInputElement ||
-            target instanceof
-              HTMLTextAreaElement ||
-            target instanceof
-              HTMLSelectElement
+            event.defaultPrevented ||
+            event.altKey ||
+            event.ctrlKey ||
+            event.metaKey
           ) {
+            return;
+          }
+
+          const targetElement =
+            event.target instanceof
+              Element
+              ? event.target
+              : null;
+
+          const interactiveTarget =
+            targetElement?.closest(
+              "button,a,input,textarea,select,[contenteditable='true']",
+            );
+
+          if (interactiveTarget) {
             return;
           }
 
@@ -1944,11 +2058,13 @@ export function PazoraVideoPlayer({
               break;
 
             case "arrowleft":
+            case "j":
               event.preventDefault();
               skipBy(-10);
               break;
 
             case "arrowright":
+            case "l":
               event.preventDefault();
               skipBy(10);
               break;
@@ -1977,9 +2093,11 @@ export function PazoraVideoPlayer({
         () => {
           setFullscreen(
             document
-              .fullscreenElement !==
-              null,
+              .fullscreenElement ===
+              containerRef.current,
           );
+
+          revealControls();
         };
 
       window.addEventListener(
@@ -2005,6 +2123,8 @@ export function PazoraVideoPlayer({
       };
     },
     [
+      closePlayerMenus,
+      revealControls,
       skipBy,
       toggleCaptionsQuick,
       toggleFullscreen,
@@ -2085,7 +2205,10 @@ export function PazoraVideoPlayer({
       onTouchStart={
         handleTouchStart
       }
-      className="group relative flex h-[100dvh] w-screen touch-manipulation select-none items-center justify-center overflow-hidden bg-black text-white"
+      onFocusCapture={
+        revealControls
+      }
+      className="pazora-player group relative flex h-[100dvh] w-screen touch-manipulation select-none items-center justify-center overflow-hidden bg-black text-white"
     >
       <style>
         {`
@@ -2097,6 +2220,13 @@ export function PazoraVideoPlayer({
             font-weight: 600;
             line-height: 1.25;
             text-shadow: ${subtitleCueShadow};
+          }
+
+          .pazora-player button:focus-visible,
+          .pazora-player a:focus-visible,
+          .pazora-player input:focus-visible {
+            outline: 2px solid #ffffff;
+            outline-offset: 2px;
           }
         `}
       </style>
@@ -2523,6 +2653,7 @@ export function PazoraVideoPlayer({
                   ? "Pause"
                   : "Play"
               }
+              aria-keyshortcuts="Space K"
               className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <PlayIcon
@@ -2538,6 +2669,7 @@ export function PazoraVideoPlayer({
                 skipBy(-10)
               }
               aria-label="Back 10 seconds"
+              aria-keyshortcuts="ArrowLeft J"
               className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <SkipIcon direction="back" />
@@ -2549,6 +2681,7 @@ export function PazoraVideoPlayer({
                 skipBy(10)
               }
               aria-label="Forward 10 seconds"
+              aria-keyshortcuts="ArrowRight L"
               className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <SkipIcon direction="forward" />
@@ -2626,6 +2759,7 @@ export function PazoraVideoPlayer({
 
           <div className="relative flex items-center gap-1 sm:gap-2">
             <button
+              ref={settingsButtonRef}
               type="button"
               onClick={
                 toggleSettingsMenu
@@ -2634,6 +2768,7 @@ export function PazoraVideoPlayer({
               aria-expanded={
                 settingsMenuOpen
               }
+              aria-controls="pazora-playback-settings"
               className={[
                 "inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
                 settingsMenuOpen
@@ -2645,7 +2780,12 @@ export function PazoraVideoPlayer({
             </button>
 
             {settingsMenuOpen ? (
-              <div className="absolute bottom-14 right-0 max-h-[72dvh] w-[calc(100vw-1.5rem)] max-w-[22rem] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-[#151515]/95 p-3 shadow-2xl backdrop-blur-xl sm:right-12 sm:max-h-[70vh] [&_button]:min-h-11">
+              <div
+                id="pazora-playback-settings"
+                role="dialog"
+                aria-label="Playback settings"
+                className="absolute bottom-14 right-0 max-h-[72dvh] w-[calc(100vw-1.5rem)] max-w-[22rem] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-[#151515]/95 p-3 shadow-2xl backdrop-blur-xl sm:right-12 sm:max-h-[70vh] [&_button]:min-h-11"
+              >
                 <div className="px-2 pb-3 pt-1">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
                     Playback speed
@@ -3011,6 +3151,7 @@ export function PazoraVideoPlayer({
             ) : null}
 
             <button
+              ref={subtitleButtonRef}
               type="button"
               onClick={
                 toggleSubtitleMenu
@@ -3024,6 +3165,8 @@ export function PazoraVideoPlayer({
               aria-expanded={
                 subtitleMenuOpen
               }
+              aria-controls="pazora-subtitles-menu"
+              aria-keyshortcuts="C"
               className={[
                 "inline-flex h-11 min-w-11 touch-manipulation items-center justify-center rounded-full px-2 text-sm font-bold tracking-[-0.04em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
                 selectedSubtitleIndex !==
@@ -3041,7 +3184,12 @@ export function PazoraVideoPlayer({
             </button>
 
             {subtitleMenuOpen ? (
-              <div className="absolute bottom-14 right-0 max-h-[60dvh] w-[calc(100vw-1.5rem)] max-w-72 overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-[#151515]/95 p-2 shadow-2xl backdrop-blur-xl [&_button]:min-h-11">
+              <div
+                id="pazora-subtitles-menu"
+                role="dialog"
+                aria-label="Subtitles"
+                className="absolute bottom-14 right-0 max-h-[60dvh] w-[calc(100vw-1.5rem)] max-w-72 overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-[#151515]/95 p-2 shadow-2xl backdrop-blur-xl [&_button]:min-h-11"
+              >
                 <p className="px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
                   Subtitles
                 </p>
@@ -3127,6 +3275,7 @@ export function PazoraVideoPlayer({
                   ? "Exit fullscreen"
                   : "Enter fullscreen"
               }
+              aria-keyshortcuts="F"
               className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <FullscreenIcon />
