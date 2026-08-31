@@ -123,6 +123,15 @@ export type MediaEpisodesData = {
   episodes: MediaShelf;
 };
 
+export type MediaEpisodeNavigationData = {
+  seriesId: string;
+  currentEpisode: MediaItem;
+  previousEpisode: MediaItem | null;
+  nextEpisode: MediaItem | null;
+  position: number;
+  total: number;
+};
+
 export type MediaHomeData = {
   libraries: MediaLibrary[];
   continueWatching: MediaShelf;

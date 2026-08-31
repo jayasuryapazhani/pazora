@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import type {
+  MediaEpisodeNavigationData,
   MediaItem,
 } from "@/types/media";
 import type {
@@ -21,6 +22,9 @@ import type {
 type PazoraVideoPlayerProps = {
   item: MediaItem;
   playback: PlaybackPlan;
+  episodeNavigation:
+    MediaEpisodeNavigationData |
+    null;
 };
 
 type PlaybackPlanResponse = {
@@ -324,9 +328,37 @@ function SkipIcon({
   );
 }
 
+function EpisodeStepIcon({
+  direction,
+}: {
+  direction:
+    | "previous"
+    | "next";
+}) {
+  const next =
+    direction === "next";
+
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-6 w-6 fill-current"
+    >
+      <path
+        d={
+          next
+            ? "M5.5 5.5v13l9.5-6.5-9.5-6.5Zm11.5 0h2v13h-2v-13Z"
+            : "M18.5 5.5v13L9 12l9.5-6.5ZM5 5.5h2v13H5v-13Z"
+        }
+      />
+    </svg>
+  );
+}
+
 export function PazoraVideoPlayer({
   item,
   playback,
+  episodeNavigation,
 }: PazoraVideoPlayerProps) {
   const videoRef =
     useRef<HTMLVideoElement | null>(
@@ -954,6 +986,26 @@ export function PazoraVideoPlayer({
       [],
     );
 
+
+  const stopForNavigation =
+    useCallback(
+      () => {
+        if (
+          startedRef.current &&
+          !stoppedRef.current
+        ) {
+          stoppedRef.current =
+            true;
+
+          reportPlayback(
+            "stop",
+          );
+        }
+      },
+      [
+        reportPlayback,
+      ],
+    );
 
   const toggleSubtitleMenu =
     useCallback(
@@ -2244,19 +2296,9 @@ export function PazoraVideoPlayer({
         <Link
           href={`/title/${item.id}`}
           prefetch={false}
-          onClick={() => {
-            if (
-              startedRef.current &&
-              !stoppedRef.current
-            ) {
-              stoppedRef.current =
-                true;
-
-              reportPlayback(
-                "stop",
-              );
-            }
-          }}
+          onClick={
+            stopForNavigation
+          }
           aria-label="Back to title details"
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/35 text-2xl backdrop-blur-md transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
@@ -2419,6 +2461,46 @@ export function PazoraVideoPlayer({
             >
               <SkipIcon direction="forward" />
             </button>
+
+            {episodeNavigation
+              ?.previousEpisode ? (
+              <Link
+                href={`/watch/${encodeURIComponent(
+                  episodeNavigation
+                    .previousEpisode
+                    .id,
+                )}`}
+                prefetch={false}
+                onClick={
+                  stopForNavigation
+                }
+                aria-label={`Previous episode: ${episodeNavigation.previousEpisode.name}`}
+                title={`Previous: ${episodeNavigation.previousEpisode.name}`}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                <EpisodeStepIcon direction="previous" />
+              </Link>
+            ) : null}
+
+            {episodeNavigation
+              ?.nextEpisode ? (
+              <Link
+                href={`/watch/${encodeURIComponent(
+                  episodeNavigation
+                    .nextEpisode
+                    .id,
+                )}`}
+                prefetch={false}
+                onClick={
+                  stopForNavigation
+                }
+                aria-label={`Next episode: ${episodeNavigation.nextEpisode.name}`}
+                title={`Next: ${episodeNavigation.nextEpisode.name}`}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                <EpisodeStepIcon direction="next" />
+              </Link>
+            ) : null}
 
             <div className="ml-0 hidden items-center gap-1 sm:ml-1 sm:flex">
               <button

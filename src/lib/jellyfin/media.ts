@@ -29,6 +29,7 @@ import type {
   MediaBrowseOptions,
   MediaDetailMetadata,
   MediaDetailsData,
+  MediaEpisodeNavigationData,
   MediaEpisodesData,
   MediaHomeData,
   MediaItem,
@@ -833,5 +834,171 @@ export async function getMediaEpisodesData(
     seriesId,
     seasonId,
     episodes,
+  };
+}
+
+function compareEpisodesForPlayback(
+  left: MediaItem,
+  right: MediaItem,
+): number {
+  const leftSeason =
+    left.parentIndexNumber ??
+    Number.MAX_SAFE_INTEGER;
+
+  const rightSeason =
+    right.parentIndexNumber ??
+    Number.MAX_SAFE_INTEGER;
+
+  if (leftSeason !== rightSeason) {
+    return (
+      leftSeason -
+      rightSeason
+    );
+  }
+
+  const leftEpisode =
+    left.indexNumber ??
+    Number.MAX_SAFE_INTEGER;
+
+  const rightEpisode =
+    right.indexNumber ??
+    Number.MAX_SAFE_INTEGER;
+
+  if (leftEpisode !== rightEpisode) {
+    return (
+      leftEpisode -
+      rightEpisode
+    );
+  }
+
+  const nameOrder =
+    left.name.localeCompare(
+      right.name,
+      undefined,
+      {
+        numeric: true,
+        sensitivity: "base",
+      },
+    );
+
+  if (nameOrder !== 0) {
+    return nameOrder;
+  }
+
+  return left.id.localeCompare(
+    right.id,
+  );
+}
+
+export async function getMediaEpisodeNavigationData(
+  context: AuthenticatedJellyfinContext,
+  currentEpisode: MediaItem,
+): Promise<
+  MediaEpisodeNavigationData |
+  null
+> {
+  if (
+    currentEpisode.type !==
+      BaseItemKind.Episode ||
+    !currentEpisode.seriesId
+  ) {
+    return null;
+  }
+
+  const api =
+    createAuthenticatedJellyfinApi(
+      context.accessToken,
+      context.deviceId,
+    );
+
+  const episodesResponse =
+    await getTvShowsApi(api)
+      .getEpisodes({
+        seriesId:
+          currentEpisode.seriesId,
+        userId:
+          context.user.id,
+        fields:
+          [...mediaFields],
+        isMissing:
+          false,
+        enableImages:
+          true,
+        imageTypeLimit:
+          2,
+        enableUserData:
+          true,
+      });
+
+  const allEpisodes =
+    assertShelfTypes(
+      "Series episode navigation",
+      normalizeShelf(
+        episodesResponse.data,
+      ),
+      [
+        BaseItemKind.Episode,
+      ],
+    ).items;
+
+  // Specials are kept out of the normal S1 -> S2 playback
+  // sequence. If the currently playing item is itself a
+  // special, navigation remains inside the Specials season.
+  const currentIsSpecial =
+    currentEpisode
+      .parentIndexNumber ===
+    0;
+
+  const orderedEpisodes =
+    allEpisodes
+      .filter(
+        (episode) =>
+          currentIsSpecial
+            ? episode
+                .parentIndexNumber ===
+              0
+            : episode
+                .parentIndexNumber !==
+              0,
+      )
+      .sort(
+        compareEpisodesForPlayback,
+      );
+
+  const currentIndex =
+    orderedEpisodes.findIndex(
+      (episode) =>
+        episode.id ===
+        currentEpisode.id,
+    );
+
+  if (currentIndex < 0) {
+    return null;
+  }
+
+  return {
+    seriesId:
+      currentEpisode.seriesId,
+    currentEpisode:
+      orderedEpisodes[
+        currentIndex
+      ],
+    previousEpisode:
+      currentIndex > 0
+        ? orderedEpisodes[
+            currentIndex - 1
+          ]
+        : null,
+    nextEpisode:
+      currentIndex <
+      orderedEpisodes.length - 1
+        ? orderedEpisodes[
+            currentIndex + 1
+          ]
+        : null,
+    position:
+      currentIndex + 1,
+    total:
+      orderedEpisodes.length,
   };
 }

@@ -11,6 +11,7 @@ import {
 } from "@/lib/auth/jellyfin-context";
 import {
   getMediaDetailsData,
+  getMediaEpisodeNavigationData,
 } from "@/lib/jellyfin/media";
 import {
   getPlaybackPlan,
@@ -23,6 +24,7 @@ import {
 } from "@/lib/utils/media-query";
 import type {
   MediaDetailsData,
+  MediaEpisodeNavigationData,
 } from "@/types/media";
 import type {
   PlaybackPlan,
@@ -136,6 +138,29 @@ export default async function WatchPage({
     );
   }
 
+  let episodeNavigation:
+    | MediaEpisodeNavigationData
+    | null = null;
+
+  if (
+    details.item.type ===
+    "Episode"
+  ) {
+    try {
+      episodeNavigation =
+        await getMediaEpisodeNavigationData(
+          context,
+          details.item,
+        );
+    } catch {
+      // Playback remains available even if Jellyfin cannot
+      // resolve neighboring episodes for this series.
+      console.warn(
+        "Pazora episode navigation query failed.",
+      );
+    }
+  }
+
   let playback:
     | PlaybackPlan
     | null = null;
@@ -186,8 +211,12 @@ export default async function WatchPage({
   return (
     <main className="min-h-screen bg-black">
       <PazoraVideoPlayer
+        key={details.item.id}
         item={details.item}
         playback={playback}
+        episodeNavigation={
+          episodeNavigation
+        }
       />
     </main>
   );
