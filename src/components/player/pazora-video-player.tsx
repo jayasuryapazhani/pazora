@@ -23,6 +23,14 @@ type PazoraVideoPlayerProps = {
   playback: PlaybackPlan;
 };
 
+type WebKitFullscreenVideoElement =
+  HTMLVideoElement & {
+    webkitDisplayingFullscreen?: boolean;
+    webkitEnterFullscreen?: () => void;
+    webkitExitFullscreen?: () => void;
+    webkitSupportsFullscreen?: boolean;
+  };
+
 type PlaybackPlanResponse = {
   authenticated?: boolean;
   playback?: PlaybackPlan;
@@ -1368,7 +1376,13 @@ export function PazoraVideoPlayer({
         const container =
           containerRef.current;
 
-        if (!container) {
+        const video =
+          videoRef.current;
+
+        if (
+          !container ||
+          !video
+        ) {
           return;
         }
 
@@ -1386,14 +1400,94 @@ export function PazoraVideoPlayer({
           return;
         }
 
-        void container
-          .requestFullscreen()
-          .catch(() => {
+        const webkitVideo =
+          video as
+            WebKitFullscreenVideoElement;
+
+        if (
+          webkitVideo
+            .webkitDisplayingFullscreen &&
+          typeof webkitVideo
+            .webkitExitFullscreen ===
+            "function"
+        ) {
+          try {
+            webkitVideo
+              .webkitExitFullscreen();
+          } catch {
             setFullscreen(
               false,
             );
 
             revealControls();
+          }
+
+          return;
+        }
+
+        const enterWebKitFullscreen =
+          () => {
+            if (
+              typeof webkitVideo
+                .webkitEnterFullscreen !==
+                "function" ||
+              webkitVideo
+                .webkitSupportsFullscreen ===
+                false
+            ) {
+              return false;
+            }
+
+            try {
+              webkitVideo
+                .webkitEnterFullscreen();
+
+              return true;
+            } catch {
+              return false;
+            }
+          };
+
+        const standardFullscreenAvailable =
+          document.fullscreenEnabled ===
+            true &&
+          typeof container
+            .requestFullscreen ===
+            "function";
+
+        // iPhone Safari supports native fullscreen on the
+        // video element rather than arbitrary DOM containers.
+        // Call it directly from the button's user gesture.
+        if (
+          !standardFullscreenAvailable
+        ) {
+          if (
+            !enterWebKitFullscreen()
+          ) {
+            setFullscreen(
+              false,
+            );
+
+            revealControls();
+          }
+
+          return;
+        }
+
+        void container
+          .requestFullscreen()
+          .catch(() => {
+            // Some WebKit configurations expose the standard
+            // API but still reject container fullscreen.
+            if (
+              !enterWebKitFullscreen()
+            ) {
+              setFullscreen(
+                false,
+              );
+
+              revealControls();
+            }
           });
       },
       [
@@ -2686,6 +2780,27 @@ export function PazoraVideoPlayer({
           revealControls();
         };
 
+      const handleWebKitBeginFullscreen =
+        () => {
+          setFullscreen(
+            true,
+          );
+
+          revealControls();
+        };
+
+      const handleWebKitEndFullscreen =
+        () => {
+          setFullscreen(
+            false,
+          );
+
+          revealControls();
+        };
+
+      const video =
+        videoRef.current;
+
       window.addEventListener(
         "keydown",
         handleKeyDown,
@@ -2694,6 +2809,16 @@ export function PazoraVideoPlayer({
       document.addEventListener(
         "fullscreenchange",
         handleFullscreenChange,
+      );
+
+      video?.addEventListener(
+        "webkitbeginfullscreen",
+        handleWebKitBeginFullscreen,
+      );
+
+      video?.addEventListener(
+        "webkitendfullscreen",
+        handleWebKitEndFullscreen,
       );
 
       return () => {
@@ -2705,6 +2830,16 @@ export function PazoraVideoPlayer({
         document.removeEventListener(
           "fullscreenchange",
           handleFullscreenChange,
+        );
+
+        video?.removeEventListener(
+          "webkitbeginfullscreen",
+          handleWebKitBeginFullscreen,
+        );
+
+        video?.removeEventListener(
+          "webkitendfullscreen",
+          handleWebKitEndFullscreen,
         );
       };
     },
