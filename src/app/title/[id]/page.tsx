@@ -11,6 +11,9 @@ import {
   MediaRow,
 } from "@/components/media/media-row";
 import {
+  FavoriteToggle,
+} from "@/components/media/favorite-toggle";
+import {
   MediaProgress,
 } from "@/components/media/media-progress";
 import {
@@ -473,13 +476,13 @@ export default async function TitlePage({
               />
             </div>
 
-            {item.type === "Movie" ||
-            item.type === "Episode" ? (
-              <div className="mt-6">
+            <div className="mt-6 flex flex-wrap items-start gap-3">
+              {item.type === "Movie" ||
+              item.type === "Episode" ? (
                 <Link
                   href={`/watch/${item.id}`}
                   prefetch={false}
-                  className="inline-flex items-center gap-2 rounded-md bg-white px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-white/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                  className="inline-flex min-h-10 items-center gap-2 rounded-md bg-white px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-white/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
                 >
                   <span aria-hidden="true">
                     {"\u25B6"}
@@ -491,8 +494,16 @@ export default async function TitlePage({
                     ? "Resume"
                     : "Play"}
                 </Link>
-              </div>
-            ) : null}
+              ) : null}
+
+              <FavoriteToggle
+                itemId={item.id}
+                itemName={item.name}
+                initialFavorite={
+                  item.user.favorite
+                }
+              />
+            </div>
 
             {tagline ? (
               <p className="mt-5 text-sm font-medium italic leading-6 text-white/55">
