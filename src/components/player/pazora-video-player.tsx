@@ -406,7 +406,7 @@ export function PazoraVideoPlayer({
 
   const defaultSubtitleIndex =
     transport
-      ?.defaultSubtitleStreamIndex ??
+      ?.subtitleStreamIndex ??
     null;
 
   const selectedSubtitleIndexRef =
@@ -860,42 +860,6 @@ export function PazoraVideoPlayer({
       [],
     );
 
-  const selectSubtitle =
-    useCallback(
-      (
-        index: number | null,
-      ) => {
-        setSelectedSubtitleIndex(
-          index,
-        );
-
-        selectedSubtitleIndexRef
-          .current =
-          index;
-
-        setSubtitleMenuOpen(
-          false,
-        );
-
-        subtitleMenuOpenRef
-          .current =
-          false;
-
-        revealControls();
-
-        if (
-          startedRef.current
-        ) {
-          reportPlayback(
-            "progress",
-          );
-        }
-      },
-      [
-        reportPlayback,
-        revealControls,
-      ],
-    );
 
   const toggleSubtitleMenu =
     useCallback(
@@ -991,6 +955,8 @@ export function PazoraVideoPlayer({
           number | null,
         nextQualityMode:
           PlaybackQualityMode,
+        nextSubtitleStreamIndex:
+          number | null,
       ) => {
         const video =
           videoRef.current;
@@ -1010,7 +976,10 @@ export function PazoraVideoPlayer({
               .audioStreamIndex &&
           nextQualityMode ===
             transport
-              .qualityMode
+              .qualityMode &&
+          nextSubtitleStreamIndex ===
+            transport
+              .subtitleStreamIndex
         ) {
           return;
         }
@@ -1068,6 +1037,16 @@ export function PazoraVideoPlayer({
             ),
           );
         }
+
+        query.set(
+          "subtitleStreamIndex",
+          nextSubtitleStreamIndex ===
+            null
+            ? "-1"
+            : String(
+                nextSubtitleStreamIndex,
+              ),
+        );
 
         try {
           const response =
@@ -1167,29 +1146,15 @@ export function PazoraVideoPlayer({
             null,
           );
 
-          const selectedSubtitleIndex =
-            selectedSubtitleIndexRef
-              .current;
+          selectedSubtitleIndexRef
+            .current =
+            nextTransport
+              .subtitleStreamIndex;
 
-          if (
-            selectedSubtitleIndex !==
-              null &&
-            !nextTransport
-              .subtitleTracks
-              .some(
-                (track) =>
-                  track.index ===
-                  selectedSubtitleIndex,
-              )
-          ) {
-            selectedSubtitleIndexRef
-              .current =
-              null;
-
-            setSelectedSubtitleIndex(
-              null,
-            );
-          }
+          setSelectedSubtitleIndex(
+            nextTransport
+              .subtitleStreamIndex,
+          );
 
           setIsBuffering(
             true,
@@ -1222,6 +1187,85 @@ export function PazoraVideoPlayer({
         item.id,
         reportPlayback,
         revealControls,
+        transport,
+      ],
+    );
+  const selectSubtitle =
+    useCallback(
+      (
+        index: number | null,
+      ) => {
+        if (!transport) {
+          return;
+        }
+
+        const currentTrack =
+          selectedSubtitleIndexRef
+            .current === null
+            ? null
+            : transport.subtitleTracks.find(
+                (track) =>
+                  track.index ===
+                  selectedSubtitleIndexRef
+                    .current,
+              ) ??
+              null;
+
+        const nextTrack =
+          index === null
+            ? null
+            : transport.subtitleTracks.find(
+                (track) =>
+                  track.index === index,
+              ) ??
+              null;
+
+        setSubtitleMenuOpen(
+          false,
+        );
+
+        subtitleMenuOpenRef
+          .current =
+          false;
+
+        revealControls();
+
+        const requiresTransportSwitch =
+          currentTrack?.delivery ===
+            "burn-in" ||
+          nextTrack?.delivery ===
+            "burn-in";
+
+        if (requiresTransportSwitch) {
+          void switchTransport(
+            transport.audioStreamIndex,
+            transport.qualityMode,
+            index,
+          );
+
+          return;
+        }
+
+        setSelectedSubtitleIndex(
+          index,
+        );
+
+        selectedSubtitleIndexRef
+          .current =
+          index;
+
+        if (
+          startedRef.current
+        ) {
+          reportPlayback(
+            "progress",
+          );
+        }
+      },
+      [
+        reportPlayback,
+        revealControls,
+        switchTransport,
         transport,
       ],
     );
@@ -2300,6 +2344,8 @@ export function PazoraVideoPlayer({
                                 option.index,
                                 transport
                                   .qualityMode,
+                                selectedSubtitleIndexRef
+                                  .current,
                               );
                             }}
                             className={[
@@ -2391,6 +2437,8 @@ export function PazoraVideoPlayer({
                                 transport
                                   .audioStreamIndex,
                                 option.mode,
+                                selectedSubtitleIndexRef
+                                  .current,
                               );
                             }}
                             className={[
@@ -2428,7 +2476,11 @@ export function PazoraVideoPlayer({
 
                 {transport
                   .subtitleTracks
-                  .length > 0 ? (
+                  .some(
+                    (track) =>
+                      track.delivery ===
+                      "external",
+                  ) ? (
                   <div className="border-t border-white/10 px-2 pb-2 pt-4">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
                       Subtitle size

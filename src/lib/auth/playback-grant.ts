@@ -14,7 +14,7 @@ const grantAlgorithm =
 
 const grantAad =
   Buffer.from(
-    "pazora-playback-grant-v4",
+    "pazora-playback-grant-v5",
     "utf8",
   );
 
@@ -25,7 +25,7 @@ export const playbackGrantQueryParam =
   "pazoraGrant";
 
 export type PlaybackGrantClaims = {
-  version: 4;
+  version: 5;
   expiresAtEpochSeconds: number;
   itemId: string;
   mediaSourceId: string;
@@ -33,6 +33,8 @@ export type PlaybackGrantClaims = {
   hlsMasterPath: string;
   runtimeTicks: number;
   subtitleIndexes: number[];
+  burnInSubtitleStreamIndex:
+    number | null;
   audioStreamIndex:
     number | null;
   qualityMode:
@@ -264,7 +266,7 @@ function parseClaims(
       unknown
     >;
 
-  if (record.version !== 4) {
+  if (record.version !== 5) {
     throw new Error(
       "Invalid playback grant version.",
     );
@@ -332,6 +334,11 @@ function parseClaims(
       record.subtitleIndexes,
     );
 
+  const selectedBurnInSubtitleStreamIndex =
+    nullableNonNegativeInteger(
+      record.burnInSubtitleStreamIndex,
+    );
+
   const selectedAudioStreamIndex =
     nullableNonNegativeInteger(
       record.audioStreamIndex,
@@ -376,6 +383,8 @@ function parseClaims(
     !deviceId ||
     runtimeTicks === null ||
     allowedSubtitleIndexes === null ||
+    selectedBurnInSubtitleStreamIndex ===
+      undefined ||
     selectedAudioStreamIndex ===
       undefined ||
     selectedQualityMode ===
@@ -405,7 +414,7 @@ function parseClaims(
   }
 
   return {
-    version: 4,
+    version: 5,
     expiresAtEpochSeconds:
       expiresAt,
     itemId,
@@ -415,6 +424,8 @@ function parseClaims(
     runtimeTicks,
     subtitleIndexes:
       allowedSubtitleIndexes,
+    burnInSubtitleStreamIndex:
+      selectedBurnInSubtitleStreamIndex,
     audioStreamIndex:
       selectedAudioStreamIndex,
     qualityMode:
@@ -444,7 +455,7 @@ export function issuePlaybackGrant(
 
   const claims:
     PlaybackGrantClaims = {
-      version: 4,
+      version: 5,
       expiresAtEpochSeconds:
         now +
         grantLifetimeSeconds,

@@ -113,6 +113,58 @@ function optionalNonNegativeInteger(
   };
 }
 
+function optionalSubtitleStreamIndex(
+  value: string | null,
+): {
+  ok: true;
+  value:
+    number | null | undefined;
+} | {
+  ok: false;
+  error: string;
+} {
+  if (value === null) {
+    return {
+      ok: true,
+      value: undefined,
+    };
+  }
+
+  if (value === "-1") {
+    return {
+      ok: true,
+      value: null,
+    };
+  }
+
+  if (!/^\d+$/.test(value)) {
+    return {
+      ok: false,
+      error:
+        "Subtitle stream index must be -1 or a non-negative integer.",
+    };
+  }
+
+  const parsed =
+    Number(value);
+
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 0
+  ) {
+    return {
+      ok: false,
+      error:
+        "Subtitle stream index is outside the supported range.",
+    };
+  }
+
+  return {
+    ok: true,
+    value: parsed,
+  };
+}
+
 function qualityMode(
   value: string | null,
 ): {
@@ -166,6 +218,13 @@ export async function GET(
       ),
     );
 
+  const requestedSubtitle =
+    optionalSubtitleStreamIndex(
+      requestUrl.searchParams.get(
+        "subtitleStreamIndex",
+      ),
+    );
+
   const requestedPosition =
     optionalNonNegativeInteger(
       requestUrl.searchParams.get(
@@ -182,15 +241,18 @@ export async function GET(
 
   if (
     !requestedAudio.ok ||
+    !requestedSubtitle.ok ||
     !requestedPosition.ok ||
     !requestedQuality.ok
   ) {
     const error =
       !requestedAudio.ok
         ? requestedAudio.error
-        : !requestedPosition.ok
-          ? requestedPosition.error
-          : !requestedQuality.ok
+        : !requestedSubtitle.ok
+          ? requestedSubtitle.error
+          : !requestedPosition.ok
+            ? requestedPosition.error
+            : !requestedQuality.ok
             ? requestedQuality.error
             : "Invalid playback preference.";
 
@@ -287,6 +349,8 @@ export async function GET(
             requestedAudio.value,
           qualityMode:
             requestedQuality.value,
+          subtitleStreamIndex:
+            requestedSubtitle.value,
           positionTicks:
             requestedPosition.value,
         },

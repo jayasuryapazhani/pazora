@@ -429,6 +429,31 @@ function defaultTextSubtitleIndex(
   );
 }
 
+function selectedSubtitleIndex(
+  source: PlaybackSource,
+  textIndexes: number[],
+  requested:
+    number | null | undefined,
+): number | null {
+  if (requested === undefined) {
+    return defaultTextSubtitleIndex(
+      source,
+      textIndexes,
+    );
+  }
+
+  if (requested === null) {
+    return null;
+  }
+
+  return source.subtitleTracks.some(
+    (track) =>
+      track.index === requested,
+  )
+    ? requested
+    : null;
+}
+
 function subtitleOptions(
   publicUrl: string,
   playback: PlaybackPlan,
@@ -438,40 +463,55 @@ function subtitleOptions(
 ): PlaybackSubtitleOption[] {
   return source.subtitleTracks
     .filter(
-      (track) =>
-        track.isTextSubtitle &&
+      (
+        track,
+      ): track is typeof track & {
+        index: number;
+      } =>
         track.index !== null,
     )
     .map(
       (track) => {
-        const index =
-          track.index as number;
+        let streamUrl:
+          string | null =
+          null;
 
-        const subtitleUrl =
-          new URL(
-            `/Videos/${playback.itemId}/${source.id}/Subtitles/${index}/${initialPositionTicks}/Stream.vtt`,
-            `${publicUrl}/`,
+        if (track.isTextSubtitle) {
+          const subtitleUrl =
+            new URL(
+              `/Videos/${playback.itemId}/${source.id}/Subtitles/${track.index}/${initialPositionTicks}/Stream.vtt`,
+              `${publicUrl}/`,
+            );
+
+          subtitleUrl.searchParams.set(
+            playbackGrantQueryParam,
+            grant,
           );
 
-        subtitleUrl.searchParams.set(
-          playbackGrantQueryParam,
-          grant,
-        );
+          streamUrl =
+            subtitleUrl.toString();
+        }
 
         return {
-          index,
+          index:
+            track.index,
           label:
             track.displayTitle ??
             track.language ??
-            `Subtitle ${index}`,
+            `Subtitle ${track.index}`,
           language:
             track.language,
+          codec:
+            track.codec,
           isDefault:
             track.isDefault,
           isForced:
             track.isForced,
-          streamUrl:
-            subtitleUrl.toString(),
+          delivery:
+            track.isTextSubtitle
+              ? "external"
+              : "burn-in",
+          streamUrl,
         };
       },
     );
@@ -579,6 +619,37 @@ export function attachPlaybackTransport(
         .qualityMode,
     );
 
+  const externalSubtitleIndexes =
+    textSubtitleIndexes(
+      source,
+    );
+
+  const selectedSubtitleStreamIndex =
+    selectedSubtitleIndex(
+      source,
+      externalSubtitleIndexes,
+      preferences
+        .subtitleStreamIndex,
+    );
+
+  const selectedSubtitleTrack =
+    selectedSubtitleStreamIndex ===
+      null
+      ? null
+      : source.subtitleTracks.find(
+          (track) =>
+            track.index ===
+            selectedSubtitleStreamIndex,
+        ) ??
+        null;
+
+  const burnInSubtitleStreamIndex =
+    selectedSubtitleTrack &&
+    !selectedSubtitleTrack
+      .isTextSubtitle
+      ? selectedSubtitleStreamIndex
+      : null;
+
   const videoCodec =
     normalizedCodec(
       source
@@ -598,6 +669,8 @@ export function attachPlaybackTransport(
     );
 
   const allowVideoStreamCopy =
+    burnInSubtitleStreamIndex ===
+      null &&
     quality.mode === "best" &&
     videoCodec === "h264";
 
@@ -610,10 +683,6 @@ export function attachPlaybackTransport(
       allowAudioStreamCopy,
     );
 
-  const subtitleIndexes =
-    textSubtitleIndexes(
-      source,
-    );
 
   const hlsMasterPath =
     `/Videos/${playback.itemId}/master.m3u8`;
@@ -628,7 +697,9 @@ export function attachPlaybackTransport(
         playback.playSessionId,
       hlsMasterPath,
       runtimeTicks,
-      subtitleIndexes,
+      subtitleIndexes:
+        externalSubtitleIndexes,
+      burnInSubtitleStreamIndex,
       audioStreamIndex,
       qualityMode:
         quality.mode,
@@ -741,12 +812,32 @@ export function attachPlaybackTransport(
     "true",
   );
 
-  // Text subtitles are delivered separately as WebVTT.
-  // Never trigger subtitle burn-in in the baseline path.
-  stream.searchParams.set(
-    "subtitleStreamIndex",
-    "-1",
-  );
+  if (
+    burnInSubtitleStreamIndex !==
+    null
+  ) {
+    // Bitmap subtitles such as PGS/VobSub cannot be rendered
+    // by the browser's WebVTT track. Jellyfin composites them
+    // into the video when SubtitleMethod=Encode is selected.
+    stream.searchParams.set(
+      "subtitleStreamIndex",
+      String(
+        burnInSubtitleStreamIndex,
+      ),
+    );
+
+    stream.searchParams.set(
+      "subtitleMethod",
+      "Encode",
+    );
+  } else {
+    // Text subtitles remain external WebVTT and do not force
+    // a video transcode.
+    stream.searchParams.set(
+      "subtitleStreamIndex",
+      "-1",
+    );
+  }
 
   if (
     audioStreamIndex !== null
@@ -820,10 +911,12 @@ export function attachPlaybackTransport(
         availableQualityOptions,
       runtimeTicks,
       initialPositionTicks,
+      subtitleStreamIndex:
+        selectedSubtitleStreamIndex,
       defaultSubtitleStreamIndex:
         defaultTextSubtitleIndex(
           source,
-          subtitleIndexes,
+          externalSubtitleIndexes,
         ),
       subtitleTracks:
         subtitleOptions(

@@ -108,6 +108,43 @@ function exactOptionalIntegerQuery(
     String(expected);
 }
 
+function validSubtitleProfileQuery(
+  original: URL,
+  claims: PlaybackGrantClaims,
+): boolean {
+  const subtitleStreamIndex =
+    original.searchParams.get(
+      "subtitleStreamIndex",
+    );
+
+  const subtitleMethod =
+    original.searchParams.get(
+      "subtitleMethod",
+    );
+
+  if (
+    claims
+      .burnInSubtitleStreamIndex ===
+    null
+  ) {
+    return (
+      subtitleStreamIndex === "-1" &&
+      subtitleMethod === null
+    );
+  }
+
+  return (
+    subtitleStreamIndex ===
+      String(
+        claims
+          .burnInSubtitleStreamIndex,
+      ) &&
+    subtitleMethod === "Encode" &&
+    claims.allowVideoStreamCopy ===
+      false
+  );
+}
+
 function validTransportProfileQuery(
   original: URL,
   claims: PlaybackGrantClaims,
@@ -122,9 +159,6 @@ function validTransportProfileQuery(
     original.searchParams.get(
       "audioCodec",
     ) !== "aac" ||
-    original.searchParams.get(
-      "subtitleStreamIndex",
-    ) !== "-1" ||
     original.searchParams.get(
       "segmentContainer",
     ) !== "mp4" ||
@@ -175,6 +209,15 @@ function validTransportProfileQuery(
     original.searchParams.get(
       "enableTrickplay",
     ) !== "false"
+  ) {
+    return false;
+  }
+
+  if (
+    !validSubtitleProfileQuery(
+      original,
+      claims,
+    )
   ) {
     return false;
   }

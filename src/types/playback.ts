@@ -52,13 +52,21 @@ export type PlaybackSource = {
   subtitleTracks: PlaybackTrack[];
 };
 
+export type PlaybackSubtitleDelivery =
+  | "external"
+  | "burn-in";
+
 export type PlaybackSubtitleOption = {
   index: number;
   label: string;
   language: string | null;
+  codec: string | null;
   isDefault: boolean;
   isForced: boolean;
-  streamUrl: string;
+  delivery:
+    PlaybackSubtitleDelivery;
+  streamUrl:
+    string | null;
 };
 
 export type PlaybackAudioOption = {
@@ -88,6 +96,8 @@ export type PlaybackTransportPreferences = {
     number | null;
   qualityMode?:
     PlaybackQualityMode;
+  subtitleStreamIndex?:
+    number | null;
   positionTicks?:
     number | null;
 };
@@ -129,6 +139,8 @@ export type PlaybackTransportReady = {
     PlaybackQualityOption[];
   runtimeTicks: number;
   initialPositionTicks: number;
+  subtitleStreamIndex:
+    number | null;
   defaultSubtitleStreamIndex:
     number | null;
   subtitleTracks:
