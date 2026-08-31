@@ -800,6 +800,35 @@ const collectionChildItemTypes = [
   BaseItemKind.BoxSet,
 ] as const;
 
+export async function mediaItemExists(
+  context: AuthenticatedJellyfinContext,
+  itemId: string,
+): Promise<boolean> {
+  const api =
+    createAuthenticatedJellyfinApi(
+      context.accessToken,
+      context.deviceId,
+    );
+
+  const response =
+    await getItemsApi(api).getItems({
+      userId: context.user.id,
+      ids: [itemId],
+      recursive: true,
+      limit: 1,
+      enableUserData: false,
+      enableImages: false,
+      enableTotalRecordCount: false,
+    });
+
+  return (
+    response.data.Items ?? []
+  ).some(
+    (item) =>
+      item.Id === itemId,
+  );
+}
+
 export async function getMediaDetailsData(
   context: AuthenticatedJellyfinContext,
   itemId: string,

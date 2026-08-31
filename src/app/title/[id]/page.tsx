@@ -14,6 +14,9 @@ import {
   FavoriteToggle,
 } from "@/components/media/favorite-toggle";
 import {
+  MediaArtworkSurface,
+} from "@/components/media/media-artwork-surface";
+import {
   MediaProgress,
 } from "@/components/media/media-progress";
 import {
@@ -26,6 +29,7 @@ import {
   getMediaDetailsData,
   getMediaEpisodesData,
   getSimilarMediaShelf,
+  mediaItemExists,
 } from "@/lib/jellyfin/media";
 import {
   formatRating,
@@ -62,6 +66,30 @@ function getUpstreamStatus(
     error === null
   ) {
     return null;
+  }
+
+  const directStatus =
+    Reflect.get(
+      error,
+      "status",
+    );
+
+  if (
+    typeof directStatus === "number"
+  ) {
+    return directStatus;
+  }
+
+  const directStatusCode =
+    Reflect.get(
+      error,
+      "statusCode",
+    );
+
+  if (
+    typeof directStatusCode === "number"
+  ) {
+    return directStatusCode;
   }
 
   const response =
@@ -286,6 +314,22 @@ export default async function TitlePage({
       notFound();
     }
 
+    try {
+      const exists =
+        await mediaItemExists(
+          context,
+          itemId.value,
+        );
+
+      if (!exists) {
+        notFound();
+      }
+    } catch {
+      console.warn(
+        "Pazora title existence probe failed.",
+      );
+    }
+
     console.warn(
       "Pazora title details query failed.",
     );
@@ -408,19 +452,14 @@ export default async function TitlePage({
       />
 
       <section className="relative min-h-[35rem] overflow-hidden pt-[var(--pazora-header-height)] sm:min-h-[40rem] lg:min-h-[44rem]">
-        {backdrop ? (
-          <div
-            role="img"
-            aria-label={`${item.name} backdrop`}
-            className="absolute inset-0 bg-cover bg-center"
-            style={{
-              backgroundImage:
-                `url("${backdrop}")`,
-            }}
-          />
-        ) : (
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_24%,rgba(211,32,63,0.18),transparent_34%),linear-gradient(120deg,#18181d,#09090b_70%)]" />
-        )}
+        <MediaArtworkSurface
+          key={`title-backdrop-${item.id}`}
+          src={backdrop}
+          label={`${item.name} backdrop`}
+          className="absolute inset-0"
+          fallbackClassName="bg-[radial-gradient(circle_at_72%_24%,rgba(211,32,63,0.18),transparent_34%),linear-gradient(120deg,#18181d,#09090b_70%)]"
+          showWordmark={false}
+        />
 
         <div
           aria-hidden="true"
