@@ -19,16 +19,10 @@ import {
 
 type AppHeaderProps = {
   userName: string;
-  showMovies: boolean;
-  showSeries: boolean;
-  showCollections: boolean;
 };
 
 export function AppHeader({
   userName,
-  showMovies,
-  showSeries,
-  showCollections,
 }: AppHeaderProps) {
   const router =
     useRouter();
@@ -174,55 +168,59 @@ export function AppHeader({
             Home
           </Link>
 
-          {showMovies ? (
-            <Link
-              href="/movies"
-              prefetch={false}
-              aria-current={
-                pathname === "/movies"
-                  ? "page"
-                  : undefined
-              }
-              className={[
-                "transition hover:text-white",
-                pathname === "/movies"
-                  ? "text-white"
-                  : "text-white/65",
-              ].join(" ")}
-            >
-              Movies
-            </Link>
-          ) : null}
+          <Link
+            href="/movies"
+            prefetch={false}
+            aria-current={
+              pathname === "/movies"
+                ? "page"
+                : undefined
+            }
+            className={[
+              "transition hover:text-white",
+              pathname === "/movies"
+                ? "text-white"
+                : "text-white/65",
+            ].join(" ")}
+          >
+            Movies
+          </Link>
 
-          {showSeries ? (
-            <Link
-              href="/browse#tv-shows"
-              prefetch={false}
-              className="text-white/65 transition hover:text-white"
-            >
-              TV Shows
-            </Link>
-          ) : null}
+          <Link
+            href="/tv"
+            prefetch={false}
+            aria-current={
+              pathname === "/tv"
+                ? "page"
+                : undefined
+            }
+            className={[
+              "transition hover:text-white",
+              pathname === "/tv"
+                ? "text-white"
+                : "text-white/65",
+            ].join(" ")}
+          >
+            TV Shows
+          </Link>
 
-          {showCollections ? (
-            <Link
-              href="/collections"
-              prefetch={false}
-              aria-current={
-                pathname === "/collections"
-                  ? "page"
-                  : undefined
-              }
-              className={[
-                "transition hover:text-white",
-                pathname === "/collections"
-                  ? "text-white"
-                  : "text-white/65",
-              ].join(" ")}
-            >
-              Collections
-            </Link>
-          ) : null}
+          <Link
+            href="/collections"
+            prefetch={false}
+            aria-current={
+              pathname === "/collections"
+                ? "page"
+                : undefined
+            }
+            className={[
+              "transition hover:text-white",
+              pathname === "/collections"
+                ? "text-white"
+                : "text-white/65",
+            ].join(" ")}
+          >
+            Collections
+          </Link>
         </nav>
 
         <div className="ml-auto flex items-center gap-2">

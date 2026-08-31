@@ -125,13 +125,21 @@ export function HeaderSearch() {
       clearSearchState();
     }, [clearSearchState]);
 
-  function openResult(
-    item: MediaItem,
+
+  function openFullSearch(
+    value: string,
   ) {
+    const normalized =
+      value.trim();
+
+    if (!normalized) {
+      return;
+    }
+
     closeSearch();
 
     router.push(
-      `/title/${item.id}`,
+      `/search?q=${encodeURIComponent(normalized)}`,
     );
   }
 
@@ -386,12 +394,12 @@ export function HeaderSearch() {
                 if (
                   event.key ===
                     "Enter" &&
-                  results.length > 0
+                  normalizedQuery
                 ) {
                   event.preventDefault();
 
-                  openResult(
-                    results[0],
+                  openFullSearch(
+                    normalizedQuery,
                   );
                 }
               }}
