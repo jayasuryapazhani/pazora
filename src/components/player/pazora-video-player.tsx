@@ -35,6 +35,12 @@ const jellyfinTicksPerSecond =
 const controlsHideDelayMs =
   2800;
 
+const touchControlsHideDelayMs =
+  4200;
+
+const touchClickWindowMs =
+  800;
+
 const playbackRateOptions = [
   0.5,
   0.75,
@@ -343,6 +349,12 @@ export function PazoraVideoPlayer({
       ReturnType<typeof setTimeout> |
       null
     >(null);
+
+  const lastTouchAtRef =
+    useRef(0);
+
+  const touchInteractionRef =
+    useRef(false);
 
   const startedRef =
     useRef(false);
@@ -660,6 +672,11 @@ export function PazoraVideoPlayer({
 
         clearControlsTimer();
 
+        const hideDelayMs =
+          touchInteractionRef.current
+            ? touchControlsHideDelayMs
+            : controlsHideDelayMs;
+
         controlsTimerRef.current =
           setTimeout(
             () => {
@@ -679,12 +696,45 @@ export function PazoraVideoPlayer({
                 );
               }
             },
-            controlsHideDelayMs,
+            hideDelayMs,
           );
       },
       [
         clearControlsTimer,
       ],
+    );
+
+  const handleMouseActivity =
+    useCallback(
+      () => {
+        if (
+          Date.now() -
+            lastTouchAtRef.current <
+          touchClickWindowMs
+        ) {
+          return;
+        }
+
+        touchInteractionRef.current =
+          false;
+
+        revealControls();
+      },
+      [
+        revealControls,
+      ],
+    );
+
+  const handleTouchStart =
+    useCallback(
+      () => {
+        touchInteractionRef.current =
+          true;
+
+        lastTouchAtRef.current =
+          Date.now();
+      },
+      [],
     );
 
   const absolutePositionSeconds =
@@ -952,6 +1002,90 @@ export function PazoraVideoPlayer({
           .requestFullscreen();
       },
       [],
+    );
+
+  const handleVideoClick =
+    useCallback(
+      () => {
+        const hasOpenMenu =
+          subtitleMenuOpenRef
+            .current ||
+          settingsMenuOpenRef
+            .current;
+
+        if (hasOpenMenu) {
+          subtitleMenuOpenRef
+            .current =
+            false;
+
+          settingsMenuOpenRef
+            .current =
+            false;
+
+          setSubtitleMenuOpen(
+            false,
+          );
+
+          setSettingsMenuOpen(
+            false,
+          );
+
+          revealControls();
+
+          return;
+        }
+
+        const recentlyTouched =
+          Date.now() -
+            lastTouchAtRef.current <
+          touchClickWindowMs;
+
+        if (!recentlyTouched) {
+          togglePlay();
+
+          return;
+        }
+
+        if (
+          controlsVisible &&
+          isPlaying
+        ) {
+          clearControlsTimer();
+
+          setControlsVisible(
+            false,
+          );
+
+          return;
+        }
+
+        revealControls();
+      },
+      [
+        clearControlsTimer,
+        controlsVisible,
+        isPlaying,
+        revealControls,
+        togglePlay,
+      ],
+    );
+
+  const handleVideoDoubleClick =
+    useCallback(
+      () => {
+        if (
+          Date.now() -
+            lastTouchAtRef.current <
+          touchClickWindowMs
+        ) {
+          return;
+        }
+
+        toggleFullscreen();
+      },
+      [
+        toggleFullscreen,
+      ],
     );
 
 
@@ -1922,10 +2056,10 @@ export function PazoraVideoPlayer({
 
   const subtitleFontSize =
     subtitleSize === "small"
-      ? "2.1vh"
+      ? "clamp(14px, 2.1vmin, 22px)"
       : subtitleSize === "large"
-        ? "3.2vh"
-        : "2.6vh";
+        ? "clamp(18px, 3.2vmin, 34px)"
+        : "clamp(16px, 2.6vmin, 28px)";
 
   const subtitleCueBackground =
     subtitleBackdrop === "box"
@@ -1943,15 +2077,15 @@ export function PazoraVideoPlayer({
     <section
       ref={containerRef}
       onMouseMove={
-        revealControls
+        handleMouseActivity
       }
       onMouseDown={
-        revealControls
+        handleMouseActivity
       }
       onTouchStart={
-        revealControls
+        handleTouchStart
       }
-      className="group relative flex h-screen w-screen select-none items-center justify-center overflow-hidden bg-black text-white"
+      className="group relative flex h-[100dvh] w-screen touch-manipulation select-none items-center justify-center overflow-hidden bg-black text-white"
     >
       <style>
         {`
@@ -1975,10 +2109,10 @@ export function PazoraVideoPlayer({
         className="pazora-video h-full w-full bg-black object-contain"
         aria-label={`Play ${item.name}`}
         onClick={
-          togglePlay
+          handleVideoClick
         }
         onDoubleClick={
-          toggleFullscreen
+          handleVideoDoubleClick
         }
         onPlaying={() => {
           setIsPlaying(
@@ -2235,7 +2369,7 @@ export function PazoraVideoPlayer({
 
       <div
         className={[
-          "absolute inset-x-0 top-0 z-40 flex items-center px-5 py-5 transition-all duration-300 sm:px-8",
+          "absolute inset-x-0 top-0 z-40 flex items-center px-3 pb-3 pt-[max(1.25rem,env(safe-area-inset-top))] transition-all duration-300 sm:px-8 sm:pb-5",
           overlayVisible
             ? "translate-y-0 opacity-100"
             : "-translate-y-3 pointer-events-none opacity-0",
@@ -2258,7 +2392,7 @@ export function PazoraVideoPlayer({
             }
           }}
           aria-label="Back to title details"
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/35 text-2xl backdrop-blur-md transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          className="inline-flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-black/35 text-2xl backdrop-blur-md transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
           <span aria-hidden="true">
             {"\u2190"}
@@ -2289,14 +2423,14 @@ export function PazoraVideoPlayer({
 
       <div
         className={[
-          "absolute inset-x-0 bottom-0 z-50 px-5 pb-5 transition-all duration-300 sm:px-8 sm:pb-7",
+          "absolute inset-x-0 bottom-0 z-50 px-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] transition-all duration-300 sm:px-8 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))]",
           overlayVisible
             ? "translate-y-0 opacity-100"
             : "translate-y-4 pointer-events-none opacity-0",
         ].join(" ")}
       >
-        <div className="mb-4 flex items-center gap-3">
-          <span className="w-14 shrink-0 text-right text-xs font-medium tabular-nums text-white/90 sm:w-16 sm:text-sm">
+        <div className="mb-3 grid grid-cols-2 items-center gap-x-3 gap-y-1 sm:mb-4 sm:flex sm:gap-3">
+          <span className="order-2 w-auto shrink-0 text-left text-[11px] font-medium tabular-nums text-white/90 sm:order-none sm:w-16 sm:text-right sm:text-sm">
             {formatTime(
               displaySeconds,
             )}
@@ -2350,7 +2484,7 @@ export function PazoraVideoPlayer({
                 );
               }
             }}
-            className="h-5 min-w-0 flex-1 cursor-pointer appearance-none bg-transparent
+            className="order-1 col-span-2 h-8 min-w-0 flex-1 touch-pan-x cursor-pointer appearance-none bg-transparent sm:order-none sm:col-auto sm:h-5
               [&::-webkit-slider-runnable-track]:h-1
               [&::-webkit-slider-runnable-track]:rounded-full
               [&::-webkit-slider-thumb]:-mt-1.5
@@ -2370,14 +2504,14 @@ export function PazoraVideoPlayer({
             }}
           />
 
-          <span className="w-14 shrink-0 text-xs font-medium tabular-nums text-white/70 sm:w-16 sm:text-sm">
+          <span className="order-3 ml-auto w-auto shrink-0 text-right text-[11px] font-medium tabular-nums text-white/70 sm:order-none sm:ml-0 sm:w-16 sm:text-left sm:text-sm">
             {formatTime(
               runtimeSeconds,
             )}
           </span>
         </div>
 
-        <div className="flex items-center justify-between gap-5">
+        <div className="flex items-center justify-between gap-1 sm:gap-5">
           <div className="flex min-w-0 items-center gap-1 sm:gap-2">
             <button
               type="button"
@@ -2389,7 +2523,7 @@ export function PazoraVideoPlayer({
                   ? "Pause"
                   : "Play"
               }
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <PlayIcon
                 paused={
@@ -2404,7 +2538,7 @@ export function PazoraVideoPlayer({
                 skipBy(-10)
               }
               aria-label="Back 10 seconds"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <SkipIcon direction="back" />
             </button>
@@ -2415,7 +2549,7 @@ export function PazoraVideoPlayer({
                 skipBy(10)
               }
               aria-label="Forward 10 seconds"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <SkipIcon direction="forward" />
             </button>
@@ -2431,7 +2565,7 @@ export function PazoraVideoPlayer({
                     ? "Unmute"
                     : "Mute"
                 }
-                className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
               >
                 <VolumeIcon
                   muted={
@@ -2501,7 +2635,7 @@ export function PazoraVideoPlayer({
                 settingsMenuOpen
               }
               className={[
-                "inline-flex h-11 w-11 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
+                "inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
                 settingsMenuOpen
                   ? "bg-white text-black"
                   : "hover:bg-white/10",
@@ -2511,7 +2645,7 @@ export function PazoraVideoPlayer({
             </button>
 
             {settingsMenuOpen ? (
-              <div className="absolute bottom-14 right-12 max-h-[70vh] w-[min(22rem,calc(100vw-2.5rem))] overflow-y-auto rounded-2xl border border-white/10 bg-[#151515]/95 p-3 shadow-2xl backdrop-blur-xl">
+              <div className="absolute bottom-14 right-0 max-h-[72dvh] w-[calc(100vw-1.5rem)] max-w-[22rem] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-[#151515]/95 p-3 shadow-2xl backdrop-blur-xl sm:right-12 sm:max-h-[70vh] [&_button]:min-h-11">
                 <div className="px-2 pb-3 pt-1">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
                     Playback speed
@@ -2891,7 +3025,7 @@ export function PazoraVideoPlayer({
                 subtitleMenuOpen
               }
               className={[
-                "inline-flex h-11 min-w-11 items-center justify-center rounded-full px-2 text-sm font-bold tracking-[-0.04em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
+                "inline-flex h-11 min-w-11 touch-manipulation items-center justify-center rounded-full px-2 text-sm font-bold tracking-[-0.04em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
                 selectedSubtitleIndex !==
                 null
                   ? "bg-white text-black hover:bg-white/90"
@@ -2907,7 +3041,7 @@ export function PazoraVideoPlayer({
             </button>
 
             {subtitleMenuOpen ? (
-              <div className="absolute bottom-14 right-0 w-64 overflow-hidden rounded-xl border border-white/10 bg-[#151515]/95 p-2 shadow-2xl backdrop-blur-xl">
+              <div className="absolute bottom-14 right-0 max-h-[60dvh] w-[calc(100vw-1.5rem)] max-w-72 overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-[#151515]/95 p-2 shadow-2xl backdrop-blur-xl [&_button]:min-h-11">
                 <p className="px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
                   Subtitles
                 </p>
@@ -2993,7 +3127,7 @@ export function PazoraVideoPlayer({
                   ? "Exit fullscreen"
                   : "Enter fullscreen"
               }
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <FullscreenIcon />
             </button>
