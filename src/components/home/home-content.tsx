@@ -332,6 +332,25 @@ export function HomeContent({
   const browse =
     findBrowseTarget(media);
 
+  const recommendationExclusions =
+    new Set(
+      [
+        ...media.continueWatching.items,
+        ...media.favorites.items,
+      ].map(
+        (item) =>
+          item.id,
+      ),
+    );
+
+  const recommendations =
+    media.recommendations.items.filter(
+      (item) =>
+        !recommendationExclusions.has(
+          item.id,
+        ),
+    );
+
   return (
     <>
       <HomeHero
@@ -361,6 +380,12 @@ export function HomeContent({
           items={
             media.favorites.items
           }
+        />
+
+        <MediaRow
+          id="recommended-for-you"
+          title="Recommended for You"
+          items={recommendations}
         />
 
         <MediaRow

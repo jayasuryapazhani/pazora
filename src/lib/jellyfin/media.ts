@@ -1,6 +1,7 @@
 import {
   getItemsApi,
   getLibraryApi,
+  getSuggestionsApi,
   getTvShowsApi,
   getUserLibraryApi,
   getUserViewsApi,
@@ -202,10 +203,46 @@ export async function getMediaHomeData(
   const userViewsApi =
     getUserViewsApi(api);
 
+  const recommendationsPromise =
+    getSuggestionsApi(api)
+      .getSuggestions({
+        userId: context.user.id,
+        type: [
+          BaseItemKind.Movie,
+          BaseItemKind.Series,
+        ],
+        startIndex: 0,
+        limit: 24,
+        enableTotalRecordCount: true,
+      })
+      .then(
+        (response) =>
+          assertShelfTypes(
+            "Recommendations",
+            normalizeShelf(
+              response.data,
+            ),
+            [
+              BaseItemKind.Movie,
+              BaseItemKind.Series,
+            ],
+          ),
+      )
+      .catch(
+        () => {
+          console.warn(
+            "Pazora recommendations query failed.",
+          );
+
+          return createEmptyMediaShelf();
+        },
+      );
+
   const [
     librariesResponse,
     continueWatchingResponse,
     favoritesResponse,
+    recommendations,
     recentlyAddedResponse,
     moviesResponse,
     seriesResponse,
@@ -254,6 +291,8 @@ export async function getMediaHomeData(
       imageTypeLimit: 2,
       enableTotalRecordCount: true,
     }),
+
+    recommendationsPromise,
 
     itemsApi.getItems({
       userId: context.user.id,
@@ -370,6 +409,8 @@ export async function getMediaHomeData(
           BaseItemKind.BoxSet,
         ],
       ),
+
+    recommendations,
 
     recentlyAdded:
       assertShelfTypes(
