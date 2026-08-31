@@ -3,7 +3,6 @@ import type {
 } from "@/lib/auth/jellyfin-context";
 import {
   issuePlaybackGrant,
-  playbackGrantQueryParam,
 } from "@/lib/auth/playback-grant";
 import type {
   PlaybackAudioOption,
@@ -546,11 +545,7 @@ function selectedSubtitleIndex(
 }
 
 function subtitleOptions(
-  publicUrl: string,
-  playback: PlaybackPlan,
   source: PlaybackSource,
-  initialPositionTicks: number,
-  grant: string,
 ): PlaybackSubtitleOption[] {
   return source.subtitleTracks
     .filter(
@@ -562,49 +557,36 @@ function subtitleOptions(
         track.index !== null,
     )
     .map(
-      (track) => {
-        let streamUrl:
-          string | null =
-          null;
+      (track) => ({
+        index:
+          track.index,
+        label:
+          track.displayTitle ??
+          track.language ??
+          `Subtitle ${track.index}`,
+        language:
+          track.language,
+        codec:
+          track.codec,
+        isDefault:
+          track.isDefault,
+        isForced:
+          track.isForced,
 
-        if (track.isTextSubtitle) {
-          const subtitleUrl =
-            new URL(
-              `/Videos/${playback.itemId}/${source.id}/Subtitles/${track.index}/${initialPositionTicks}/Stream.vtt`,
-              `${publicUrl}/`,
-            );
+        // Pazora currently uses a separately generated HLS
+        // transport rather than Jellyfin Web's full negotiated
+        // playback pipeline. Render every selected subtitle
+        // server-side so subtitle timing uses the exact same
+        // media clock as the encoded video.
+        delivery:
+          "burn-in",
 
-          subtitleUrl.searchParams.set(
-            playbackGrantQueryParam,
-            grant,
-          );
-
-          streamUrl =
-            subtitleUrl.toString();
-        }
-
-        return {
-          index:
-            track.index,
-          label:
-            track.displayTitle ??
-            track.language ??
-            `Subtitle ${track.index}`,
-          language:
-            track.language,
-          codec:
-            track.codec,
-          isDefault:
-            track.isDefault,
-          isForced:
-            track.isForced,
-          delivery:
-            track.isTextSubtitle
-              ? "external"
-              : "burn-in",
-          streamUrl,
-        };
-      },
+        // Browser WebVTT rendering is intentionally disabled in
+        // server-sync mode. No Jellyfin access token or subtitle
+        // resource URL is exposed to the browser here.
+        streamUrl:
+          null,
+      }),
     );
 }
 
@@ -735,9 +717,7 @@ export function attachPlaybackTransport(
         null;
 
   const burnInSubtitleStreamIndex =
-    selectedSubtitleTrack &&
-    !selectedSubtitleTrack
-      .isTextSubtitle
+    selectedSubtitleTrack
       ? selectedSubtitleStreamIndex
       : null;
 
@@ -907,9 +887,9 @@ export function attachPlaybackTransport(
     burnInSubtitleStreamIndex !==
     null
   ) {
-    // Bitmap subtitles such as PGS/VobSub cannot be rendered
-    // by the browser's WebVTT track. Jellyfin composites them
-    // into the video when SubtitleMethod=Encode is selected.
+    // Server-sync mode composites every selected subtitle into
+    // the video. Text and bitmap subtitles therefore share the
+    // exact media timeline produced by Jellyfin.
     stream.searchParams.set(
       "subtitleStreamIndex",
       String(
@@ -922,8 +902,8 @@ export function attachPlaybackTransport(
       "Encode",
     );
   } else {
-    // Text subtitles remain external WebVTT and do not force
-    // a video transcode.
+    // No subtitle is selected, so no subtitle processing is
+    // requested from Jellyfin.
     stream.searchParams.set(
       "subtitleStreamIndex",
       "-1",
@@ -1011,11 +991,7 @@ export function attachPlaybackTransport(
         ),
       subtitleTracks:
         subtitleOptions(
-          publicUrl,
-          playback,
           source,
-          0,
-          issued.grant,
         ),
     },
   };

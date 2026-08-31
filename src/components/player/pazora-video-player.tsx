@@ -60,6 +60,15 @@ type SubtitleBackdrop =
   | "box"
   | "clear";
 
+type PlaybackRecoveryKind =
+  | "network"
+  | "media"
+  | "native"
+  | "fatal";
+
+const recoveryTimeoutMs =
+  12_000;
+
 const subtitleSizeOptions: Array<{
   label: string;
   value: SubtitleSize;
@@ -568,6 +577,29 @@ export function PazoraVideoPlayer({
       null,
     );
 
+  const recoveryTimeoutRef =
+    useRef<
+      ReturnType<typeof setTimeout> |
+      null
+    >(null);
+
+  const recoveryInProgressRef =
+    useRef(false);
+
+  const recoveryKindRef =
+    useRef<
+      PlaybackRecoveryKind |
+      null
+    >(null);
+
+  const recoveryPositionSecondsRef =
+    useRef<number | null>(
+      null,
+    );
+
+  const recoveryShouldResumeRef =
+    useRef(false);
+
   const transportSwitchingRef =
     useRef(false);
 
@@ -706,6 +738,12 @@ export function PazoraVideoPlayer({
     useState<string | null>(
       null,
     );
+
+  const [
+    isRecovering,
+    setIsRecovering,
+  ] =
+    useState(false);
 
   const [
     isChangingTransport,
@@ -1046,6 +1084,142 @@ export function PazoraVideoPlayer({
         mediaSourceId,
         playSessionId,
         transport,
+      ],
+    );
+
+  const clearRecoveryTimer =
+    useCallback(
+      () => {
+        if (
+          recoveryTimeoutRef.current
+        ) {
+          clearTimeout(
+            recoveryTimeoutRef.current,
+          );
+
+          recoveryTimeoutRef.current =
+            null;
+        }
+      },
+      [],
+    );
+
+  const captureRecoveryState =
+    useCallback(
+      () => {
+        const video =
+          videoRef.current;
+
+        if (!video) {
+          return;
+        }
+
+        recoveryPositionSecondsRef
+          .current =
+          absolutePositionSeconds();
+
+        recoveryShouldResumeRef
+          .current =
+          !video.paused ||
+          !startedRef.current;
+      },
+      [
+        absolutePositionSeconds,
+      ],
+    );
+
+  const finishRecovery =
+    useCallback(
+      () => {
+        clearRecoveryTimer();
+
+        recoveryInProgressRef
+          .current =
+          false;
+
+        recoveryKindRef.current =
+          null;
+
+        recoveryPositionSecondsRef
+          .current =
+          null;
+
+        recoveryShouldResumeRef
+          .current =
+          false;
+
+        setIsRecovering(
+          false,
+        );
+
+        setPlayerError(
+          null,
+        );
+      },
+      [
+        clearRecoveryTimer,
+      ],
+    );
+
+  const failRecovery =
+    useCallback(
+      (
+        message: string,
+      ) => {
+        clearRecoveryTimer();
+
+        recoveryInProgressRef
+          .current =
+          false;
+
+        setIsRecovering(
+          false,
+        );
+
+        setIsBuffering(
+          false,
+        );
+
+        setIsPlaying(
+          false,
+        );
+
+        setPlayerError(
+          message,
+        );
+
+        setControlsVisible(
+          true,
+        );
+
+        clearControlsTimer();
+      },
+      [
+        clearControlsTimer,
+        clearRecoveryTimer,
+      ],
+    );
+
+  const armRecoveryTimeout =
+    useCallback(
+      (
+        message: string,
+      ) => {
+        clearRecoveryTimer();
+
+        recoveryTimeoutRef.current =
+          setTimeout(
+            () => {
+              failRecovery(
+                message,
+              );
+            },
+            recoveryTimeoutMs,
+          );
+      },
+      [
+        clearRecoveryTimer,
+        failRecovery,
       ],
     );
 
@@ -1880,10 +2054,41 @@ export function PazoraVideoPlayer({
 
         if (
           !video ||
-          !hls
+          !hls ||
+          recoveryInProgressRef
+            .current
         ) {
           return;
         }
+
+        const hadCapturedState =
+          recoveryPositionSecondsRef
+            .current !==
+          null;
+
+        const positionSeconds =
+          recoveryPositionSecondsRef
+            .current ??
+          absolutePositionSeconds();
+
+        if (!hadCapturedState) {
+          recoveryShouldResumeRef
+            .current =
+            !video.paused ||
+            !startedRef.current;
+        }
+
+        recoveryPositionSecondsRef
+          .current =
+          positionSeconds;
+
+        recoveryInProgressRef
+          .current =
+          true;
+
+        setIsRecovering(
+          true,
+        );
 
         setPlayerError(
           null,
@@ -1895,27 +2100,35 @@ export function PazoraVideoPlayer({
 
         revealControls();
 
-        hls.startLoad(
-          Number.isFinite(
-            video.currentTime,
-          )
-            ? video.currentTime
-            : -1,
-        );
+        try {
+          hls.stopLoad();
 
-        void video
-          .play()
-          .catch(() => {
-            setIsBuffering(
-              false,
-            );
+          if (
+            recoveryKindRef.current ===
+              "media" ||
+            recoveryKindRef.current ===
+              "native"
+          ) {
+            hls.recoverMediaError();
+          }
 
-            setPlayerError(
-              "Playback could not be resumed. Try again.",
-            );
-          });
+          hls.startLoad(
+            positionSeconds,
+          );
+
+          armRecoveryTimeout(
+            "Playback is still unavailable. Restore the connection and try again.",
+          );
+        } catch {
+          failRecovery(
+            "Playback could not be restarted. Try again.",
+          );
+        }
       },
       [
+        absolutePositionSeconds,
+        armRecoveryTimeout,
+        failRecovery,
         revealControls,
       ],
     );
@@ -2073,39 +2286,96 @@ export function PazoraVideoPlayer({
             return;
           }
 
-          setIsBuffering(
-            false,
+          const recoveryKind:
+            PlaybackRecoveryKind =
+            data.type ===
+              Hls.ErrorTypes
+                .NETWORK_ERROR
+              ? "network"
+              : data.type ===
+                  Hls.ErrorTypes
+                    .MEDIA_ERROR
+                ? "media"
+                : "fatal";
+
+          const message =
+            recoveryKind ===
+              "network"
+              ? "The video connection was interrupted."
+              : recoveryKind ===
+                  "media"
+                ? "The browser encountered a media playback error."
+                : "Playback stopped because of an unrecoverable stream error.";
+
+          // A second fatal error during the same recovery attempt
+          // promotes the interruption to the manual Retry UI.
+          if (
+            recoveryInProgressRef
+              .current
+          ) {
+            failRecovery(
+              message,
+            );
+
+            return;
+          }
+
+          captureRecoveryState();
+
+          recoveryKindRef.current =
+            recoveryKind;
+
+          if (
+            recoveryKind ===
+            "fatal"
+          ) {
+            failRecovery(
+              message,
+            );
+
+            return;
+          }
+
+          recoveryInProgressRef
+            .current =
+            true;
+
+          setIsRecovering(
+            true,
           );
-
-          if (
-            data.type ===
-            Hls.ErrorTypes.NETWORK_ERROR
-          ) {
-            setPlayerError(
-              "The video connection was interrupted.",
-            );
-
-            hls.startLoad();
-
-            return;
-          }
-
-          if (
-            data.type ===
-            Hls.ErrorTypes.MEDIA_ERROR
-          ) {
-            setPlayerError(
-              "The browser encountered a media playback error.",
-            );
-
-            hls.recoverMediaError();
-
-            return;
-          }
 
           setPlayerError(
-            "Playback stopped because of an unrecoverable stream error.",
+            null,
           );
+
+          setIsBuffering(
+            true,
+          );
+
+          revealControls();
+
+          try {
+            if (
+              recoveryKind ===
+              "media"
+            ) {
+              hls.recoverMediaError();
+            }
+
+            hls.startLoad(
+              recoveryPositionSecondsRef
+                .current ??
+              -1,
+            );
+
+            armRecoveryTimeout(
+              "Playback recovery timed out. Restore the connection and try again.",
+            );
+          } catch {
+            failRecovery(
+              message,
+            );
+          }
         };
 
       hls.on(
@@ -2155,8 +2425,12 @@ export function PazoraVideoPlayer({
       };
     },
     [
+      armRecoveryTimeout,
+      captureRecoveryState,
+      failRecovery,
       initialSeconds,
       item.id,
+      revealControls,
       streamUrl,
       transport,
     ],
@@ -2166,6 +2440,7 @@ export function PazoraVideoPlayer({
     () => {
       return () => {
         clearControlsTimer();
+        clearRecoveryTimer();
 
         if (
           startedRef.current &&
@@ -2182,6 +2457,7 @@ export function PazoraVideoPlayer({
     },
     [
       clearControlsTimer,
+      clearRecoveryTimer,
       reportPlayback,
     ],
   );
@@ -2571,9 +2847,7 @@ export function PazoraVideoPlayer({
             false,
           );
 
-          setPlayerError(
-            null,
-          );
+          finishRecovery();
 
           stoppedRef.current =
             false;
@@ -2622,9 +2896,72 @@ export function PazoraVideoPlayer({
           revealControls();
         }}
         onCanPlay={() => {
-          setIsBuffering(
-            false,
-          );
+          const video =
+            videoRef.current;
+
+          if (
+            !recoveryInProgressRef
+              .current
+          ) {
+            setIsBuffering(
+              false,
+            );
+
+            return;
+          }
+
+          if (!video) {
+            failRecovery(
+              "Playback recovered, but the video element is unavailable.",
+            );
+
+            return;
+          }
+
+          if (
+            !recoveryShouldResumeRef
+              .current
+          ) {
+            setIsBuffering(
+              false,
+            );
+
+            finishRecovery();
+
+            return;
+          }
+
+          if (!video.paused) {
+            setIsBuffering(
+              false,
+            );
+
+            finishRecovery();
+
+            return;
+          }
+
+          void video
+            .play()
+            .catch(() => {
+              // Recovery itself succeeded. If the browser blocks
+              // automatic resume, leave the player paused and expose
+              // the normal Play control instead of treating it as
+              // another stream failure.
+              setIsBuffering(
+                false,
+              );
+
+              setIsPlaying(
+                false,
+              );
+
+              setControlsVisible(
+                true,
+              );
+
+              finishRecovery();
+            });
         }}
         onTimeUpdate={() => {
           const absolute =
@@ -2685,34 +3022,27 @@ export function PazoraVideoPlayer({
           }
         }}
         onError={() => {
-          setPlayerError(
+          // HLS may surface the same underlying failure through the
+          // native video element while an automatic recovery is
+          // already underway. Let the HLS recovery own that attempt.
+          if (
+            recoveryInProgressRef
+              .current
+          ) {
+            return;
+          }
+
+          captureRecoveryState();
+
+          recoveryKindRef.current =
+            "native";
+
+          // Keep the Jellyfin playback session alive. A successful
+          // retry continues the same session and will report progress,
+          // while a real exit/unmount still sends one final stop.
+          failRecovery(
             "The browser could not continue playing this stream.",
           );
-
-          setIsBuffering(
-            false,
-          );
-
-          setIsPlaying(
-            false,
-          );
-
-          setControlsVisible(
-            true,
-          );
-
-          if (
-            startedRef.current &&
-            !stoppedRef.current
-          ) {
-            stoppedRef.current =
-              true;
-
-            reportPlayback(
-              "stop",
-              true,
-            );
-          }
         }}
       >
         {activeSubtitleUrl ? (
@@ -2768,8 +3098,18 @@ export function PazoraVideoPlayer({
 
       {isBuffering &&
       !playerError ? (
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
+        >
           <div className="h-11 w-11 animate-spin rounded-full border-[3px] border-white/20 border-t-white" />
+
+          <span className="sr-only">
+            {isRecovering
+              ? "Reconnecting playback"
+              : "Buffering playback"}
+          </span>
         </div>
       ) : null}
 
