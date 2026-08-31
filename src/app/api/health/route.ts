@@ -2,6 +2,10 @@ import {
   NextResponse,
 } from "next/server";
 
+import {
+  appConfig,
+} from "@/lib/config";
+
 export const dynamic =
   "force-dynamic";
 
@@ -172,6 +176,8 @@ export async function GET(
   return NextResponse.json(
     {
       service: "pazora",
+      version:
+        appConfig.version,
       status:
         ready
           ? "ok"
