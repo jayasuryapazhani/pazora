@@ -90,6 +90,27 @@ const subtitleBackdropOptions: Array<{
   },
 ];
 
+const subtitleDelayStepSeconds =
+  0.25;
+
+const subtitleDelayLimitSeconds =
+  5;
+
+function formatSubtitleDelay(
+  seconds: number,
+): string {
+  if (
+    Math.abs(seconds) <
+    0.001
+  ) {
+    return "0.00s";
+  }
+
+  return (
+    `${seconds > 0 ? "+" : ""}${seconds.toFixed(2)}s`
+  );
+}
+
 function ticksFromSeconds(
   seconds: number,
 ): number {
@@ -350,6 +371,27 @@ export function PazoraVideoPlayer({
   const playbackRateRef =
     useRef(1);
 
+  const subtitleCueBaselinesRef =
+    useRef(
+      new WeakMap<
+        TextTrackCue,
+        {
+          startTime: number;
+          endTime: number;
+        }
+      >(),
+    );
+
+  const subtitleCueItemIdRef =
+    useRef(
+      item.id,
+    );
+
+  const initialAutoplayItemIdRef =
+    useRef<string | null>(
+      null,
+    );
+
   const [
     activePlayback,
     setActivePlayback,
@@ -523,6 +565,58 @@ export function PazoraVideoPlayer({
   ] =
     useState<SubtitleBackdrop>(
       "shadow",
+    );
+
+  const [
+    subtitleDelayState,
+    setSubtitleDelayState,
+  ] =
+    useState({
+      itemId: item.id,
+      seconds: 0,
+    });
+
+  const subtitleDelaySeconds =
+    subtitleDelayState.itemId ===
+    item.id
+      ? subtitleDelayState.seconds
+      : 0;
+
+  const setSubtitleDelaySeconds =
+    useCallback(
+      (
+        next:
+          number |
+          ((current: number) => number),
+      ) => {
+        setSubtitleDelayState(
+          (current) => {
+            const currentSeconds =
+              current.itemId ===
+              item.id
+                ? current.seconds
+                : 0;
+
+            const nextSeconds =
+              typeof next ===
+              "function"
+                ? next(
+                    currentSeconds,
+                  )
+                : next;
+
+            return {
+              itemId:
+                item.id,
+              seconds:
+                nextSeconds,
+            };
+          },
+        );
+      },
+      [
+        item.id,
+      ],
     );
 
   const [
@@ -948,6 +1042,106 @@ export function PazoraVideoPlayer({
       ],
     );
 
+  const applySubtitleDelay =
+    useCallback(
+      () => {
+        const video =
+          videoRef.current;
+
+        if (!video) {
+          return;
+        }
+
+        if (
+          subtitleCueItemIdRef
+            .current !==
+          item.id
+        ) {
+          subtitleCueItemIdRef
+            .current =
+            item.id;
+
+          subtitleCueBaselinesRef
+            .current =
+            new WeakMap();
+        }
+
+        for (
+          let trackIndex = 0;
+          trackIndex <
+          video.textTracks.length;
+          trackIndex += 1
+        ) {
+          const textTrack =
+            video.textTracks[
+              trackIndex
+            ];
+
+          const cues =
+            textTrack.cues;
+
+          if (!cues) {
+            continue;
+          }
+
+          for (
+            let cueIndex = 0;
+            cueIndex <
+            cues.length;
+            cueIndex += 1
+          ) {
+            const cue =
+              cues[cueIndex];
+
+            let baseline =
+              subtitleCueBaselinesRef
+                .current
+                .get(cue);
+
+            if (!baseline) {
+              baseline = {
+                startTime:
+                  cue.startTime,
+                endTime:
+                  cue.endTime,
+              };
+
+              subtitleCueBaselinesRef
+                .current
+                .set(
+                  cue,
+                  baseline,
+                );
+            }
+
+            const startTime =
+              Math.max(
+                0,
+                baseline.startTime +
+                subtitleDelaySeconds,
+              );
+
+            const endTime =
+              Math.max(
+                startTime + 0.05,
+                baseline.endTime +
+                subtitleDelaySeconds,
+              );
+
+            cue.startTime =
+              startTime;
+
+            cue.endTime =
+              endTime;
+          }
+        }
+      },
+      [
+        item.id,
+        subtitleDelaySeconds,
+      ],
+    );
+
   const switchTransport =
     useCallback(
       async (
@@ -1358,6 +1552,16 @@ export function PazoraVideoPlayer({
 
   useEffect(
     () => {
+      applySubtitleDelay();
+    },
+    [
+      applySubtitleDelay,
+      selectedSubtitleIndex,
+    ],
+  );
+
+  useEffect(
+    () => {
       const video =
         videoRef.current;
 
@@ -1404,25 +1608,48 @@ export function PazoraVideoPlayer({
             playbackRateRef
               .current;
 
-          if (
-            !resumeAfterTransportSwitchRef
-              .current
-          ) {
-            return;
+          const shouldAutoPlayInitial =
+            initialAutoplayItemIdRef
+              .current !==
+            item.id;
+
+          if (shouldAutoPlayInitial) {
+            initialAutoplayItemIdRef
+              .current =
+              item.id;
           }
+
+          const shouldResumeAfterSwitch =
+            resumeAfterTransportSwitchRef
+              .current;
 
           resumeAfterTransportSwitchRef
             .current =
             false;
 
+          const shouldAutoPlay =
+            shouldAutoPlayInitial ||
+            shouldResumeAfterSwitch;
+
+          if (!shouldAutoPlay) {
+            return;
+          }
+
           void video
             .play()
             .catch(() => {
+              // A browser may reject an autoplay request.
+              // Never mute the movie to bypass that policy:
+              // remain paused and expose the normal Play control.
               setControlsVisible(
                 true,
               );
 
               setIsPlaying(
+                false,
+              );
+
+              setIsBuffering(
                 false,
               );
             });
@@ -1523,6 +1750,7 @@ export function PazoraVideoPlayer({
     },
     [
       initialSeconds,
+      item.id,
       streamUrl,
       transport,
     ],
@@ -1933,6 +2161,10 @@ export function PazoraVideoPlayer({
                 return;
               }
 
+              subtitleCueBaselinesRef
+                .current =
+                new WeakMap();
+
               for (
                 let index = 0;
                 index <
@@ -1945,6 +2177,8 @@ export function PazoraVideoPlayer({
                 ].mode =
                   "showing";
               }
+
+              applySubtitleDelay();
             }}
           />
         ) : null}
@@ -2482,6 +2716,92 @@ export function PazoraVideoPlayer({
                       "external",
                   ) ? (
                   <div className="border-t border-white/10 px-2 pb-2 pt-4">
+                    {selectedSubtitle?.delivery ===
+                    "external" ? (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
+                            Subtitle sync
+                          </p>
+
+                          <span className="text-xs font-medium tabular-nums text-white/65">
+                            {formatSubtitleDelay(
+                              subtitleDelaySeconds,
+                            )}
+                          </span>
+                        </div>
+
+                        <div className="mt-2 grid grid-cols-3 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSubtitleDelaySeconds(
+                                (current) =>
+                                  clamp(
+                                    current -
+                                      subtitleDelayStepSeconds,
+                                    -subtitleDelayLimitSeconds,
+                                    subtitleDelayLimitSeconds,
+                                  ),
+                              );
+
+                              revealControls();
+                            }}
+                            className="rounded-lg bg-white/[0.05] px-2 py-2 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+                          >
+                            -0.25s
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSubtitleDelaySeconds(
+                                0,
+                              );
+
+                              revealControls();
+                            }}
+                            className={[
+                              "rounded-lg px-2 py-2 text-xs font-medium transition",
+                              Math.abs(
+                                subtitleDelaySeconds,
+                              ) < 0.001
+                                ? "bg-white text-black"
+                                : "bg-white/[0.05] text-white/70 hover:bg-white/10 hover:text-white",
+                            ].join(" ")}
+                          >
+                            Reset
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSubtitleDelaySeconds(
+                                (current) =>
+                                  clamp(
+                                    current +
+                                      subtitleDelayStepSeconds,
+                                    -subtitleDelayLimitSeconds,
+                                    subtitleDelayLimitSeconds,
+                                  ),
+                              );
+
+                              revealControls();
+                            }}
+                            className="rounded-lg bg-white/[0.05] px-2 py-2 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+                          >
+                            +0.25s
+                          </button>
+                        </div>
+
+                        <p className="mt-2 text-[10px] leading-4 text-white/35">
+                          Positive values delay subtitles that appear too early.
+                        </p>
+
+                        <div className="my-4 border-t border-white/10" />
+                      </>
+                    ) : null}
+
                     <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
                       Subtitle size
                     </p>

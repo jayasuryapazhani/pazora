@@ -336,10 +336,28 @@ function selectedQuality(
         )
       : null;
 
-  return (
-    selected ??
-    options[0]
-  );
+  if (selected) {
+    return selected;
+  }
+
+  if (requested === undefined) {
+    // Start high-resolution sources at 1080p to reduce
+    // network/client load. Native 1080p sources do not
+    // expose a redundant constrained 1080p option and
+    // therefore continue using their native profile.
+    const preferred1080p =
+      options.find(
+        (option) =>
+          option.mode ===
+          "1080p",
+      );
+
+    if (preferred1080p) {
+      return preferred1080p;
+    }
+  }
+
+  return options[0];
 }
 
 function normalizedCodec(
@@ -423,8 +441,81 @@ function defaultTextSubtitleIndex(
         track.index !== null,
     );
 
+  if (defaultTrack?.index !== null &&
+      defaultTrack?.index !== undefined) {
+    return defaultTrack.index;
+  }
+
+  const preferredEnglish =
+    source.subtitleTracks.find(
+      (track) => {
+        if (
+          !track.isTextSubtitle ||
+          track.index === null ||
+          track.isForced
+        ) {
+          return false;
+        }
+
+        const language =
+          track.language
+            ?.trim()
+            .toLowerCase() ??
+          "";
+
+        const title =
+          track.displayTitle
+            ?.trim()
+            .toLowerCase() ??
+          "";
+
+        const english =
+          language === "eng" ||
+          language === "en" ||
+          language.startsWith(
+            "en-",
+          );
+
+        const accessibilityTrack =
+          title.includes("sdh") ||
+          title.includes(
+            "hearing impaired",
+          );
+
+        return (
+          english &&
+          !accessibilityTrack
+        );
+      },
+    ) ??
+    source.subtitleTracks.find(
+      (track) => {
+        if (
+          !track.isTextSubtitle ||
+          track.index === null ||
+          track.isForced
+        ) {
+          return false;
+        }
+
+        const language =
+          track.language
+            ?.trim()
+            .toLowerCase() ??
+          "";
+
+        return (
+          language === "eng" ||
+          language === "en" ||
+          language.startsWith(
+            "en-",
+          )
+        );
+      },
+    );
+
   return (
-    defaultTrack?.index ??
+    preferredEnglish?.index ??
     null
   );
 }
