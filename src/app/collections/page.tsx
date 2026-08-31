@@ -66,9 +66,6 @@ export default async function CollectionsPage() {
       <main className="min-h-screen bg-[#0b0b0d] text-white">
         <AppHeader
           userName={context.user.name}
-          showMovies
-          showSeries={false}
-          showCollections
         />
 
         <section className="pazora-page-gutter flex min-h-screen items-center justify-center pt-20">
@@ -102,9 +99,6 @@ export default async function CollectionsPage() {
     <main className="min-h-screen bg-[#0b0b0d] text-white">
       <AppHeader
         userName={context.user.name}
-        showMovies
-        showSeries={false}
-        showCollections
       />
 
       <MediaLibraryBrowser

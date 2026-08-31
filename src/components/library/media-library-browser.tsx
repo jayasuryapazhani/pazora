@@ -529,9 +529,13 @@ export function MediaLibraryBrowser({
       ? page.total === 1
         ? "collection"
         : "collections"
-      : page.total === 1
-        ? "movie"
-        : "movies";
+      : initialData.kind === "series"
+        ? page.total === 1
+          ? "show"
+          : "shows"
+        : page.total === 1
+          ? "movie"
+          : "movies";
 
   return (
     <section className="pazora-page-gutter pb-20 pt-[calc(var(--pazora-header-height)+3rem)]">

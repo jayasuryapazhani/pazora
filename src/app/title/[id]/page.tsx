@@ -14,10 +14,14 @@ import {
   MediaProgress,
 } from "@/components/media/media-progress";
 import {
+  SeriesSeasons,
+} from "@/components/tv/series-seasons";
+import {
   getJellyfinContext,
 } from "@/lib/auth/jellyfin-context";
 import {
   getMediaDetailsData,
+  getMediaEpisodesData,
 } from "@/lib/jellyfin/media";
 import {
   formatRating,
@@ -28,6 +32,7 @@ import {
 } from "@/lib/utils/media-query";
 import type {
   MediaDetailsData,
+  MediaEpisodesData,
 } from "@/types/media";
 
 type TitlePageProps = {
@@ -286,9 +291,6 @@ export default async function TitlePage({
       <main className="min-h-screen bg-[#0b0b0d] text-white">
         <AppHeader
           userName={context.user.name}
-          showMovies
-          showSeries={false}
-          showCollections
         />
 
         <section className="pazora-page-gutter flex min-h-screen items-center justify-center pt-20">
@@ -351,13 +353,35 @@ export default async function TitlePage({
   const facts =
     buildFacts(details);
 
+  let initialEpisodes:
+    | MediaEpisodesData
+    | null = null;
+
+  if (
+    item.type === "Series" &&
+    details.seasons.items.length > 0
+  ) {
+    const firstSeason =
+      details.seasons.items[0];
+
+    try {
+      initialEpisodes =
+        await getMediaEpisodesData(
+          context,
+          item.id,
+          firstSeason.id,
+        );
+    } catch {
+      console.warn(
+        "Pazora initial Series episodes query failed.",
+      );
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#0b0b0d] text-white">
       <AppHeader
         userName={context.user.name}
-        showMovies
-        showSeries={false}
-        showCollections
       />
 
       <section className="relative min-h-[35rem] overflow-hidden pt-[var(--pazora-header-height)] sm:min-h-[40rem] lg:min-h-[44rem]">
@@ -530,36 +554,18 @@ export default async function TitlePage({
           </div>
         ) : null}
 
-        {details.seasons.items.length >
-        0 ? (
-          <section className="pazora-page-gutter pt-2">
-            <h2 className="text-xl font-semibold tracking-tight">
-              Seasons
-            </h2>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {details.seasons.items.map(
-                (season) => (
-                  <article
-                    key={season.id}
-                    className="rounded-lg border border-white/[0.08] bg-white/[0.035] px-4 py-4"
-                  >
-                    <p className="text-sm font-medium text-white">
-                      {season.name}
-                    </p>
-
-                    {season.productionYear ? (
-                      <p className="mt-1 text-xs text-white/35">
-                        {
-                          season.productionYear
-                        }
-                      </p>
-                    ) : null}
-                  </article>
-                ),
-              )}
-            </div>
-          </section>
+        {item.type === "Series" &&
+        details.seasons.items.length >
+          0 ? (
+          <SeriesSeasons
+            seriesId={item.id}
+            seasons={
+              details.seasons.items
+            }
+            initialEpisodes={
+              initialEpisodes
+            }
+          />
         ) : null}
       </div>
     </main>
