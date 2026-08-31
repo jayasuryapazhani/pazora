@@ -89,6 +89,162 @@ function validStartTicks(
   );
 }
 
+function exactOptionalIntegerQuery(
+  original: URL,
+  key: string,
+  expected:
+    number | null,
+): boolean {
+  const actual =
+    original.searchParams.get(
+      key,
+    );
+
+  if (expected === null) {
+    return actual === null;
+  }
+
+  return actual ===
+    String(expected);
+}
+
+function validSubtitleProfileQuery(
+  original: URL,
+  claims: PlaybackGrantClaims,
+): boolean {
+  const subtitleStreamIndex =
+    original.searchParams.get(
+      "subtitleStreamIndex",
+    );
+
+  const subtitleMethod =
+    original.searchParams.get(
+      "subtitleMethod",
+    );
+
+  if (
+    claims
+      .burnInSubtitleStreamIndex ===
+    null
+  ) {
+    return (
+      subtitleStreamIndex === "-1" &&
+      subtitleMethod === null
+    );
+  }
+
+  return (
+    subtitleStreamIndex ===
+      String(
+        claims
+          .burnInSubtitleStreamIndex,
+      ) &&
+    subtitleMethod === "Encode" &&
+    claims.allowVideoStreamCopy ===
+      false
+  );
+}
+
+function validTransportProfileQuery(
+  original: URL,
+  claims: PlaybackGrantClaims,
+): boolean {
+  if (
+    original.searchParams.get(
+      "static",
+    ) !== "false" ||
+    original.searchParams.get(
+      "videoCodec",
+    ) !== "h264" ||
+    original.searchParams.get(
+      "audioCodec",
+    ) !== "aac" ||
+    original.searchParams.get(
+      "segmentContainer",
+    ) !== "mp4" ||
+    original.searchParams.get(
+      "startTimeTicks",
+    ) !== "0" ||
+    original.searchParams.get(
+      "enableAutoStreamCopy",
+    ) !== "true" ||
+    original.searchParams.get(
+      "allowVideoStreamCopy",
+    ) !==
+      String(
+        claims
+          .allowVideoStreamCopy,
+      ) ||
+    original.searchParams.get(
+      "allowAudioStreamCopy",
+    ) !==
+      String(
+        claims
+          .allowAudioStreamCopy,
+      ) ||
+    original.searchParams.get(
+      "maxAudioChannels",
+    ) !== "6" ||
+    original.searchParams.get(
+      "audioBitRate",
+    ) !== "384000" ||
+    original.searchParams.get(
+      "videoBitRate",
+    ) !==
+      String(
+        claims.videoBitRate,
+      ) ||
+    original.searchParams.get(
+      "requireAvc",
+    ) !== "true" ||
+    original.searchParams.get(
+      "minSegments",
+    ) !== "1" ||
+    original.searchParams.get(
+      "breakOnNonKeyFrames",
+    ) !== "false" ||
+    original.searchParams.get(
+      "enableAdaptiveBitrateStreaming",
+    ) !== "false" ||
+    original.searchParams.get(
+      "enableTrickplay",
+    ) !== "false"
+  ) {
+    return false;
+  }
+
+  if (
+    !validSubtitleProfileQuery(
+      original,
+      claims,
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    !exactOptionalIntegerQuery(
+      original,
+      "audioStreamIndex",
+      claims.audioStreamIndex,
+    ) ||
+    !exactOptionalIntegerQuery(
+      original,
+      "maxHeight",
+      claims.maxHeight,
+    )
+  ) {
+    return false;
+  }
+
+  return validStartTicks(
+    original.searchParams.get(
+      "startTimeTicks",
+    ),
+    claims.runtimeTicks,
+  );
+}
+
 function validMasterRequest(
   original: URL,
   claims: PlaybackGrantClaims,
@@ -111,34 +267,9 @@ function validMasterRequest(
     return false;
   }
 
-  if (
-    original.searchParams.get(
-      "static",
-    ) !== "false" ||
-    original.searchParams.get(
-      "videoCodec",
-    ) !== "h264" ||
-    original.searchParams.get(
-      "audioCodec",
-    ) !== "aac" ||
-    original.searchParams.get(
-      "subtitleStreamIndex",
-    ) !== "-1" ||
-    original.searchParams.get(
-      "segmentContainer",
-    ) !== "mp4" ||
-    original.searchParams.get(
-      "startTimeTicks",
-    ) !== "0"
-  ) {
-    return false;
-  }
-
-  return validStartTicks(
-    original.searchParams.get(
-      "startTimeTicks",
-    ),
-    claims.runtimeTicks,
+  return validTransportProfileQuery(
+    original,
+    claims,
   );
 }
 
@@ -238,6 +369,19 @@ function validHlsChildRequest(
   original: URL,
   claims: PlaybackGrantClaims,
 ): boolean {
+  // The master request is profile-bound by the encrypted grant.
+  // Jellyfin is then allowed to normalize the generated child
+  // playlist/segment query for codec, HDR and transcoding details.
+  //
+  // Child authorization remains constrained below by:
+  // - encrypted item grant
+  // - exact item identity
+  // - media-source/session identity when present
+  // - approved HLS child path
+  // - valid start/runtime/segment timing
+  //
+  // Requiring byte-for-byte master profile equality here rejects
+  // legitimate Jellyfin-generated HDR/HEVC child resources.
   const path =
     original.pathname;
 

@@ -17,6 +17,9 @@ import {
 import {
   parseMediaItemId,
 } from "@/lib/utils/media-query";
+import type {
+  PlaybackQualityMode,
+} from "@/types/playback";
 
 export const dynamic =
   "force-dynamic";
@@ -66,11 +69,204 @@ function getUpstreamStatus(
     : null;
 }
 
+function optionalNonNegativeInteger(
+  value: string | null,
+): {
+  ok: true;
+  value: number | null;
+} | {
+  ok: false;
+  error: string;
+} {
+  if (value === null) {
+    return {
+      ok: true,
+      value: null,
+    };
+  }
+
+  if (!/^\d+$/.test(value)) {
+    return {
+      ok: false,
+      error:
+        "Playback stream index/position must be a non-negative integer.",
+    };
+  }
+
+  const parsed =
+    Number(value);
+
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 0
+  ) {
+    return {
+      ok: false,
+      error:
+        "Playback stream index/position is outside the supported range.",
+    };
+  }
+
+  return {
+    ok: true,
+    value: parsed,
+  };
+}
+
+function optionalSubtitleStreamIndex(
+  value: string | null,
+): {
+  ok: true;
+  value:
+    number | null | undefined;
+} | {
+  ok: false;
+  error: string;
+} {
+  if (value === null) {
+    return {
+      ok: true,
+      value: undefined,
+    };
+  }
+
+  if (value === "-1") {
+    return {
+      ok: true,
+      value: null,
+    };
+  }
+
+  if (!/^\d+$/.test(value)) {
+    return {
+      ok: false,
+      error:
+        "Subtitle stream index must be -1 or a non-negative integer.",
+    };
+  }
+
+  const parsed =
+    Number(value);
+
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 0
+  ) {
+    return {
+      ok: false,
+      error:
+        "Subtitle stream index is outside the supported range.",
+    };
+  }
+
+  return {
+    ok: true,
+    value: parsed,
+  };
+}
+
+function qualityMode(
+  value: string | null,
+): {
+  ok: true;
+  value: PlaybackQualityMode;
+} | {
+  ok: false;
+  error: string;
+} {
+  if (
+    value === null ||
+    value === "best"
+  ) {
+    return {
+      ok: true,
+      value: "best",
+    };
+  }
+
+  if (
+    value === "1080p" ||
+    value === "720p" ||
+    value === "480p"
+  ) {
+    return {
+      ok: true,
+      value,
+    };
+  }
+
+  return {
+    ok: false,
+    error:
+      "Unsupported playback quality.",
+  };
+}
+
 export async function GET(
   request: Request,
   routeContext: RouteContext,
 ) {
-  void request;
+  const requestUrl =
+    new URL(
+      request.url,
+    );
+
+  const requestedAudio =
+    optionalNonNegativeInteger(
+      requestUrl.searchParams.get(
+        "audioStreamIndex",
+      ),
+    );
+
+  const requestedSubtitle =
+    optionalSubtitleStreamIndex(
+      requestUrl.searchParams.get(
+        "subtitleStreamIndex",
+      ),
+    );
+
+  const requestedPosition =
+    optionalNonNegativeInteger(
+      requestUrl.searchParams.get(
+        "positionTicks",
+      ),
+    );
+
+  const requestedQuality =
+    qualityMode(
+      requestUrl.searchParams.get(
+        "quality",
+      ),
+    );
+
+  if (
+    !requestedAudio.ok ||
+    !requestedSubtitle.ok ||
+    !requestedPosition.ok ||
+    !requestedQuality.ok
+  ) {
+    const error =
+      !requestedAudio.ok
+        ? requestedAudio.error
+        : !requestedSubtitle.ok
+          ? requestedSubtitle.error
+          : !requestedPosition.ok
+            ? requestedPosition.error
+            : !requestedQuality.ok
+            ? requestedQuality.error
+            : "Invalid playback preference.";
+
+    return NextResponse.json(
+      {
+        error,
+      },
+      {
+        status: 400,
+        headers:
+          privateNoStoreHeaders,
+      },
+    );
+  }
 
   const context =
     await getJellyfinContext();
@@ -148,6 +344,16 @@ export async function GET(
       attachPlaybackTransport(
         context,
         basePlayback,
+        {
+          audioStreamIndex:
+            requestedAudio.value,
+          qualityMode:
+            requestedQuality.value,
+          subtitleStreamIndex:
+            requestedSubtitle.value,
+          positionTicks:
+            requestedPosition.value,
+        },
       );
 
     return NextResponse.json(
