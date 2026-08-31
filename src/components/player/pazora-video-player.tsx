@@ -14,12 +14,19 @@ import type {
 } from "@/types/media";
 import type {
   PlaybackPlan,
+  PlaybackQualityMode,
   PlaybackStateAction,
 } from "@/types/playback";
 
 type PazoraVideoPlayerProps = {
   item: MediaItem;
   playback: PlaybackPlan;
+};
+
+type PlaybackPlanResponse = {
+  authenticated?: boolean;
+  playback?: PlaybackPlan;
+  error?: string;
 };
 
 const jellyfinTicksPerSecond =
@@ -334,10 +341,26 @@ export function PazoraVideoPlayer({
       null,
     );
 
+  const transportSwitchingRef =
+    useRef(false);
+
+  const resumeAfterTransportSwitchRef =
+    useRef(false);
+
+  const playbackRateRef =
+    useRef(1);
+
+  const [
+    activePlayback,
+    setActivePlayback,
+  ] =
+    useState(
+      playback,
+    );
 
   const transport =
-    playback.transport.ready
-      ? playback.transport
+    activePlayback.transport.ready
+      ? activePlayback.transport
       : null;
 
   const initialTicks =
@@ -358,20 +381,23 @@ export function PazoraVideoPlayer({
     );
 
   const source =
-    playback.sources.find(
+    activePlayback.sources.find(
       (candidate) =>
         candidate.id ===
-        playback.preferredSourceId,
+        activePlayback
+          .preferredSourceId,
     ) ??
-    playback.sources[0] ??
+    activePlayback.sources[0] ??
     null;
 
   const mediaSourceId =
     source?.id ??
-    playback.preferredSourceId;
+    activePlayback
+      .preferredSourceId;
 
   const playSessionId =
-    playback.playSessionId;
+    activePlayback
+      .playSessionId;
 
   const audioStreamIndex =
     transport
@@ -428,6 +454,20 @@ export function PazoraVideoPlayer({
   const [
     playerError,
     setPlayerError,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const [
+    isChangingTransport,
+    setIsChangingTransport,
+  ] =
+    useState(false);
+
+  const [
+    streamChangeError,
+    setStreamChangeError,
   ] =
     useState<string | null>(
       null,
@@ -930,6 +970,9 @@ export function PazoraVideoPlayer({
             nextRate;
         }
 
+        playbackRateRef.current =
+          nextRate;
+
         setPlaybackRate(
           nextRate,
         );
@@ -941,6 +984,247 @@ export function PazoraVideoPlayer({
       ],
     );
 
+  const switchTransport =
+    useCallback(
+      async (
+        nextAudioStreamIndex:
+          number | null,
+        nextQualityMode:
+          PlaybackQualityMode,
+      ) => {
+        const video =
+          videoRef.current;
+
+        if (
+          !video ||
+          !transport ||
+          transportSwitchingRef
+            .current
+        ) {
+          return;
+        }
+
+        if (
+          nextAudioStreamIndex ===
+            transport
+              .audioStreamIndex &&
+          nextQualityMode ===
+            transport
+              .qualityMode
+        ) {
+          return;
+        }
+
+        transportSwitchingRef.current =
+          true;
+
+        setIsChangingTransport(
+          true,
+        );
+
+        setStreamChangeError(
+          null,
+        );
+
+        revealControls();
+
+        const positionSeconds =
+          absolutePositionSeconds();
+
+        const positionTicks =
+          ticksFromSeconds(
+            positionSeconds,
+          );
+
+        const shouldResume =
+          !video.paused;
+
+        if (
+          startedRef.current
+        ) {
+          reportPlayback(
+            "progress",
+          );
+        }
+
+        const query =
+          new URLSearchParams({
+            quality:
+              nextQualityMode,
+            positionTicks:
+              String(
+                positionTicks,
+              ),
+          });
+
+        if (
+          nextAudioStreamIndex !==
+          null
+        ) {
+          query.set(
+            "audioStreamIndex",
+            String(
+              nextAudioStreamIndex,
+            ),
+          );
+        }
+
+        try {
+          const response =
+            await fetch(
+              `/api/playback/items/${encodeURIComponent(item.id)}?${query.toString()}`,
+              {
+                method: "GET",
+                headers: {
+                  Accept:
+                    "application/json",
+                },
+                cache:
+                  "no-store",
+              },
+            );
+
+          let body:
+            PlaybackPlanResponse;
+
+          try {
+            body =
+              await response
+                .json() as
+                PlaybackPlanResponse;
+          } catch {
+            throw new Error(
+              "The playback server returned an invalid response.",
+            );
+          }
+
+          if (
+            !response.ok ||
+            !body.playback
+          ) {
+            throw new Error(
+              body.error ??
+              "Unable to prepare the selected stream.",
+            );
+          }
+
+          const nextPlayback =
+            body.playback;
+
+          if (
+            !nextPlayback
+              .transport.ready
+          ) {
+            throw new Error(
+              body.error ??
+              nextPlayback
+                .transport.reason ??
+              "Unable to prepare the selected stream.",
+            );
+          }
+
+          const nextTransport =
+            nextPlayback
+              .transport;
+
+          if (
+            startedRef.current &&
+            !stoppedRef.current
+          ) {
+            stoppedRef.current =
+              true;
+
+            reportPlayback(
+              "stop",
+            );
+          }
+
+          resumeAfterTransportSwitchRef
+            .current =
+            shouldResume;
+
+          startedRef.current =
+            false;
+
+          stoppedRef.current =
+            false;
+
+          const nextPositionSeconds =
+            secondsFromTicks(
+              nextTransport
+                .initialPositionTicks,
+            );
+
+          lastProgressSecondsRef
+            .current =
+            nextPositionSeconds;
+
+          setCurrentSeconds(
+            nextPositionSeconds,
+          );
+
+          setSeekPreviewSeconds(
+            null,
+          );
+
+          const selectedSubtitleIndex =
+            selectedSubtitleIndexRef
+              .current;
+
+          if (
+            selectedSubtitleIndex !==
+              null &&
+            !nextTransport
+              .subtitleTracks
+              .some(
+                (track) =>
+                  track.index ===
+                  selectedSubtitleIndex,
+              )
+          ) {
+            selectedSubtitleIndexRef
+              .current =
+              null;
+
+            setSelectedSubtitleIndex(
+              null,
+            );
+          }
+
+          setIsBuffering(
+            true,
+          );
+
+          setActivePlayback(
+            nextPlayback,
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Unable to change the playback stream.";
+
+          setStreamChangeError(
+            message,
+          );
+        } finally {
+          transportSwitchingRef
+            .current =
+            false;
+
+          setIsChangingTransport(
+            false,
+          );
+        }
+      },
+      [
+        absolutePositionSeconds,
+        item.id,
+        reportPlayback,
+        revealControls,
+        transport,
+      ],
+    );
   const retryPlayback =
     useCallback(
       () => {
@@ -1070,6 +1354,36 @@ export function PazoraVideoPlayer({
           );
         };
 
+      const handleManifestParsed =
+        () => {
+          video.playbackRate =
+            playbackRateRef
+              .current;
+
+          if (
+            !resumeAfterTransportSwitchRef
+              .current
+          ) {
+            return;
+          }
+
+          resumeAfterTransportSwitchRef
+            .current =
+            false;
+
+          void video
+            .play()
+            .catch(() => {
+              setControlsVisible(
+                true,
+              );
+
+              setIsPlaying(
+                false,
+              );
+            });
+        };
+
       const handleHlsError =
         (
           _event: string,
@@ -1123,6 +1437,11 @@ export function PazoraVideoPlayer({
       );
 
       hls.on(
+        Hls.Events.MANIFEST_PARSED,
+        handleManifestParsed,
+      );
+
+      hls.on(
         Hls.Events.ERROR,
         handleHlsError,
       );
@@ -1135,6 +1454,11 @@ export function PazoraVideoPlayer({
         hls.off(
           Hls.Events.MEDIA_ATTACHED,
           handleMediaAttached,
+        );
+
+        hls.off(
+          Hls.Events.MANIFEST_PARSED,
+          handleManifestParsed,
         );
 
         hls.off(
@@ -1940,6 +2264,167 @@ export function PazoraVideoPlayer({
                     )}
                   </div>
                 </div>
+
+                {transport
+                  .audioOptions
+                  .length > 0 ? (
+                  <div className="border-t border-white/10 px-2 pb-3 pt-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
+                        Audio
+                      </p>
+
+                      {isChangingTransport ? (
+                        <span className="text-[10px] font-medium text-white/40">
+                          Switching...
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-2 space-y-1">
+                      {transport.audioOptions.map(
+                        (option) => (
+                          <button
+                            key={
+                              option.index
+                            }
+                            type="button"
+                            disabled={
+                              isChangingTransport ||
+                              option.index ===
+                                transport
+                                  .audioStreamIndex
+                            }
+                            onClick={() => {
+                              void switchTransport(
+                                option.index,
+                                transport
+                                  .qualityMode,
+                              );
+                            }}
+                            className={[
+                              "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition disabled:cursor-default",
+                              option.index ===
+                              transport
+                                .audioStreamIndex
+                                ? "bg-white text-black"
+                                : "bg-white/[0.05] text-white/70 hover:bg-white/10 hover:text-white",
+                              isChangingTransport &&
+                              option.index !==
+                                transport
+                                  .audioStreamIndex
+                                ? "opacity-50"
+                                : "",
+                            ].join(" ")}
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium">
+                                {
+                                  option.label
+                                }
+                              </span>
+
+                              <span
+                                className={[
+                                  "mt-0.5 block truncate text-[10px]",
+                                  option.index ===
+                                  transport
+                                    .audioStreamIndex
+                                    ? "text-black/55"
+                                    : "text-white/35",
+                                ].join(" ")}
+                              >
+                                {[
+                                  option.language,
+                                  option.codec
+                                    ?.toUpperCase(),
+                                  option.channels
+                                    ? `${option.channels} ch`
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" • ")}
+                              </span>
+                            </span>
+
+                            {option.index ===
+                            transport
+                              .audioStreamIndex ? (
+                              <span
+                                aria-hidden="true"
+                                className="shrink-0"
+                              >
+                                {"\u2713"}
+                              </span>
+                            ) : null}
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                {transport
+                  .qualityOptions
+                  .length > 0 ? (
+                  <div className="border-t border-white/10 px-2 pb-3 pt-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
+                      Quality
+                    </p>
+
+                    <div className="mt-2 grid grid-cols-2 gap-1.5">
+                      {transport.qualityOptions.map(
+                        (option) => (
+                          <button
+                            key={
+                              option.mode
+                            }
+                            type="button"
+                            disabled={
+                              isChangingTransport ||
+                              option.mode ===
+                                transport
+                                  .qualityMode
+                            }
+                            onClick={() => {
+                              void switchTransport(
+                                transport
+                                  .audioStreamIndex,
+                                option.mode,
+                              );
+                            }}
+                            className={[
+                              "rounded-lg px-3 py-2.5 text-sm font-medium transition disabled:cursor-default",
+                              option.mode ===
+                              transport
+                                .qualityMode
+                                ? "bg-white text-black"
+                                : "bg-white/[0.05] text-white/70 hover:bg-white/10 hover:text-white",
+                              isChangingTransport &&
+                              option.mode !==
+                                transport
+                                  .qualityMode
+                                ? "opacity-50"
+                                : "",
+                            ].join(" ")}
+                          >
+                            {
+                              option.label
+                            }
+                          </button>
+                        ),
+                      )}
+                    </div>
+
+                    {streamChangeError ? (
+                      <p className="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-xs leading-5 text-red-200">
+                        {
+                          streamChangeError
+                        }
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 {transport
                   .subtitleTracks

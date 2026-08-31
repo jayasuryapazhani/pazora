@@ -5,6 +5,7 @@ import {
 } from "node:crypto";
 
 import type {
+  PlaybackQualityMode,
   PlaybackReportMethod,
 } from "@/types/playback";
 
@@ -13,7 +14,7 @@ const grantAlgorithm =
 
 const grantAad =
   Buffer.from(
-    "pazora-playback-grant-v3",
+    "pazora-playback-grant-v4",
     "utf8",
   );
 
@@ -24,7 +25,7 @@ export const playbackGrantQueryParam =
   "pazoraGrant";
 
 export type PlaybackGrantClaims = {
-  version: 3;
+  version: 4;
   expiresAtEpochSeconds: number;
   itemId: string;
   mediaSourceId: string;
@@ -32,6 +33,17 @@ export type PlaybackGrantClaims = {
   hlsMasterPath: string;
   runtimeTicks: number;
   subtitleIndexes: number[];
+  audioStreamIndex:
+    number | null;
+  qualityMode:
+    PlaybackQualityMode;
+  videoBitRate: number;
+  maxHeight:
+    number | null;
+  allowVideoStreamCopy:
+    boolean;
+  allowAudioStreamCopy:
+    boolean;
   accessToken: string;
   deviceId: string;
   reportMethod:
@@ -132,6 +144,63 @@ function positiveInteger(
   return parsed;
 }
 
+function nullableNonNegativeInteger(
+  value: unknown,
+): number | null | undefined {
+  if (value === null) {
+    return null;
+  }
+
+  const parsed =
+    nonNegativeInteger(
+      value,
+    );
+
+  return parsed === null
+    ? undefined
+    : parsed;
+}
+
+function nullablePositiveInteger(
+  value: unknown,
+): number | null | undefined {
+  if (value === null) {
+    return null;
+  }
+
+  const parsed =
+    positiveInteger(
+      value,
+    );
+
+  return parsed === null
+    ? undefined
+    : parsed;
+}
+
+function booleanValue(
+  value: unknown,
+): boolean | null {
+  return typeof value === "boolean"
+    ? value
+    : null;
+}
+
+function playbackQualityMode(
+  value: unknown,
+): PlaybackQualityMode | null {
+  if (
+    value === "best" ||
+    value === "1080p" ||
+    value === "720p" ||
+    value === "480p"
+  ) {
+    return value;
+  }
+
+  return null;
+}
+
 function reportMethod(
   value: unknown,
 ): PlaybackReportMethod | null {
@@ -195,7 +264,7 @@ function parseClaims(
       unknown
     >;
 
-  if (record.version !== 3) {
+  if (record.version !== 4) {
     throw new Error(
       "Invalid playback grant version.",
     );
@@ -263,6 +332,36 @@ function parseClaims(
       record.subtitleIndexes,
     );
 
+  const selectedAudioStreamIndex =
+    nullableNonNegativeInteger(
+      record.audioStreamIndex,
+    );
+
+  const selectedQualityMode =
+    playbackQualityMode(
+      record.qualityMode,
+    );
+
+  const selectedVideoBitRate =
+    positiveInteger(
+      record.videoBitRate,
+    );
+
+  const selectedMaxHeight =
+    nullablePositiveInteger(
+      record.maxHeight,
+    );
+
+  const selectedAllowVideoStreamCopy =
+    booleanValue(
+      record.allowVideoStreamCopy,
+    );
+
+  const selectedAllowAudioStreamCopy =
+    booleanValue(
+      record.allowAudioStreamCopy,
+    );
+
   const method =
     reportMethod(
       record.reportMethod,
@@ -277,6 +376,18 @@ function parseClaims(
     !deviceId ||
     runtimeTicks === null ||
     allowedSubtitleIndexes === null ||
+    selectedAudioStreamIndex ===
+      undefined ||
+    selectedQualityMode ===
+      null ||
+    selectedVideoBitRate ===
+      null ||
+    selectedMaxHeight ===
+      undefined ||
+    selectedAllowVideoStreamCopy ===
+      null ||
+    selectedAllowAudioStreamCopy ===
+      null ||
     !method
   ) {
     throw new Error(
@@ -294,7 +405,7 @@ function parseClaims(
   }
 
   return {
-    version: 3,
+    version: 4,
     expiresAtEpochSeconds:
       expiresAt,
     itemId,
@@ -304,6 +415,18 @@ function parseClaims(
     runtimeTicks,
     subtitleIndexes:
       allowedSubtitleIndexes,
+    audioStreamIndex:
+      selectedAudioStreamIndex,
+    qualityMode:
+      selectedQualityMode,
+    videoBitRate:
+      selectedVideoBitRate,
+    maxHeight:
+      selectedMaxHeight,
+    allowVideoStreamCopy:
+      selectedAllowVideoStreamCopy,
+    allowAudioStreamCopy:
+      selectedAllowAudioStreamCopy,
     accessToken,
     deviceId,
     reportMethod:
@@ -321,7 +444,7 @@ export function issuePlaybackGrant(
 
   const claims:
     PlaybackGrantClaims = {
-      version: 3,
+      version: 4,
       expiresAtEpochSeconds:
         now +
         grantLifetimeSeconds,

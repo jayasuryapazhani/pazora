@@ -61,6 +61,37 @@ export type PlaybackSubtitleOption = {
   streamUrl: string;
 };
 
+export type PlaybackAudioOption = {
+  index: number;
+  label: string;
+  language: string | null;
+  codec: string | null;
+  channels: number | null;
+  isDefault: boolean;
+};
+
+export type PlaybackQualityMode =
+  | "best"
+  | "1080p"
+  | "720p"
+  | "480p";
+
+export type PlaybackQualityOption = {
+  mode: PlaybackQualityMode;
+  label: string;
+  maxHeight: number | null;
+  videoBitRate: number;
+};
+
+export type PlaybackTransportPreferences = {
+  audioStreamIndex?:
+    number | null;
+  qualityMode?:
+    PlaybackQualityMode;
+  positionTicks?:
+    number | null;
+};
+
 export type PlaybackTransportPending = {
   ready: false;
   strategy:
@@ -90,6 +121,12 @@ export type PlaybackTransportReady = {
     PlaybackReportMethod;
   audioStreamIndex:
     number | null;
+  audioOptions:
+    PlaybackAudioOption[];
+  qualityMode:
+    PlaybackQualityMode;
+  qualityOptions:
+    PlaybackQualityOption[];
   runtimeTicks: number;
   initialPositionTicks: number;
   defaultSubtitleStreamIndex:
