@@ -221,6 +221,24 @@ export function AppHeader({
           >
             Collections
           </Link>
+
+          <Link
+            href="/my-list"
+            prefetch={false}
+            aria-current={
+              pathname === "/my-list"
+                ? "page"
+                : undefined
+            }
+            className={[
+              "transition hover:text-white",
+              pathname === "/my-list"
+                ? "text-white"
+                : "text-white/65",
+            ].join(" ")}
+          >
+            My List
+          </Link>
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
@@ -262,6 +280,23 @@ export function AppHeader({
                 </div>
 
                 <div className="p-2">
+                  <Link
+                    href="/my-list"
+                    prefetch={false}
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                    }}
+                    className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-white/70 transition hover:bg-white/[0.06] hover:text-white"
+                  >
+                    My List
+                  </Link>
+
+                  <div
+                    aria-hidden="true"
+                    className="my-1 border-t border-white/[0.06]"
+                  />
+
                   <button
                     type="button"
                     role="menuitem"

@@ -7,6 +7,9 @@ import {
 } from "react";
 
 import {
+  MediaArtworkSurface,
+} from "@/components/media/media-artwork-surface";
+import {
   MediaProgress,
 } from "@/components/media/media-progress";
 import {
@@ -284,20 +287,14 @@ export function HomeHero({
       }}
       className="relative h-[80vh] min-h-[680px] max-h-[900px] overflow-hidden"
     >
-      {backdrop ? (
-        <div
-          key={`backdrop-${item?.id}`}
-          role="img"
-          aria-label={`${item?.name ?? "Featured"} backdrop`}
-          className="pazora-hero-slide-enter absolute inset-0 bg-cover bg-center"
-          style={{
-            backgroundImage:
-              `url("${backdrop}")`,
-          }}
-        />
-      ) : (
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_28%,rgba(211,32,63,0.19),transparent_34%),linear-gradient(115deg,#15151a,#08080a_68%)]" />
-      )}
+      <MediaArtworkSurface
+        key={`backdrop-${item?.id ?? "fallback"}`}
+        src={backdrop}
+        label={`${item?.name ?? "Featured"} backdrop`}
+        className="pazora-hero-slide-enter absolute inset-0"
+        fallbackClassName="bg-[radial-gradient(circle_at_72%_28%,rgba(211,32,63,0.19),transparent_34%),linear-gradient(115deg,#15151a,#08080a_68%)]"
+        showWordmark={false}
+      />
 
       <div
         aria-hidden="true"

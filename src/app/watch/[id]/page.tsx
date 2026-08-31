@@ -11,6 +11,7 @@ import {
 } from "@/lib/auth/jellyfin-context";
 import {
   getMediaDetailsData,
+  mediaItemExists,
 } from "@/lib/jellyfin/media";
 import {
   getPlaybackPlan,
@@ -118,13 +119,45 @@ export default async function WatchPage({
       notFound();
     }
 
+    try {
+      const exists =
+        await mediaItemExists(
+          context,
+          itemId.value,
+        );
+
+      if (!exists) {
+        notFound();
+      }
+    } catch {
+      console.warn(
+        "Pazora watch existence probe failed.",
+      );
+    }
+
     console.warn(
       "Pazora watch details query failed.",
     );
   }
 
   if (!details) {
-    notFound();
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-black px-6 text-white">
+        <div className="max-w-md text-center">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#d3203f]">
+            Pazora Player
+          </p>
+
+          <h1 className="mt-4 text-2xl font-semibold">
+            Unable to load title
+          </h1>
+
+          <p className="mt-3 text-sm leading-6 text-white/40">
+            Jellyfin may be temporarily unavailable. Try opening the title again when the server is ready.
+          </p>
+        </div>
+      </main>
+    );
   }
 
   if (

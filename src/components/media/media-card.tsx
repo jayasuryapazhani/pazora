@@ -3,6 +3,9 @@
 import Link from "next/link";
 
 import {
+  MediaArtworkSurface,
+} from "@/components/media/media-artwork-surface";
+import {
   formatProgress,
   formatRating,
   formatRuntime,
@@ -16,6 +19,7 @@ type MediaCardProps = {
   variant: "poster" | "landscape";
   expanded: boolean;
   displayMode?: "row" | "library";
+  action?: "details" | "resume";
   onPointerEnter: () => void;
   onPointerLeave: () => void;
   onFocus: () => void;
@@ -75,6 +79,7 @@ export function MediaCard({
   variant,
   expanded,
   displayMode = "row",
+  action = "details",
   onPointerEnter,
   onPointerLeave,
   onFocus,
@@ -120,6 +125,19 @@ export function MediaCard({
   const libraryMode =
     displayMode === "library";
 
+  const resumeAction =
+    action === "resume";
+
+  const destination =
+    resumeAction
+      ? `/watch/${item.id}`
+      : `/title/${item.id}`;
+
+  const actionLabel =
+    resumeAction
+      ? "Resume"
+      : "Details";
+
   const isInProgress =
     !item.user.played &&
     progressValue > 0;
@@ -163,9 +181,13 @@ export function MediaCard({
 
   return (
     <Link
-      href={`/title/${item.id}`}
+      href={destination}
       prefetch={false}
-      aria-label={`Open ${item.name}`}
+      aria-label={
+        resumeAction
+          ? `Resume ${item.name}`
+          : `Open ${item.name}`
+      }
       onPointerEnter={
         onPointerEnter
       }
@@ -208,23 +230,13 @@ export function MediaCard({
         >
           {isLandscape ? (
             <div className="relative aspect-video w-full overflow-hidden rounded-md bg-[#1a1a1e] shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
-              {collapsedArtwork ? (
-                <div
-                  role="img"
-                  aria-label={`${item.name} artwork`}
-                  className="absolute inset-0 bg-cover bg-center transition-transform duration-300 ease-out group-hover:scale-[1.018]"
-                  style={{
-                    backgroundImage:
-                      `url("${collapsedArtwork}")`,
-                  }}
-                />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(211,32,63,0.18),transparent_42%),linear-gradient(145deg,#1c1c21,#0f0f12)]">
-                  <span className="text-[10px] font-semibold tracking-[0.22em] text-[#d3203f]">
-                    PAZORA
-                  </span>
-                </div>
-              )}
+              <MediaArtworkSurface
+                src={collapsedArtwork}
+                label={`${item.name} artwork`}
+                className="absolute inset-0"
+                imageClassName="transition-transform duration-300 ease-out group-hover:scale-[1.018]"
+                wordmarkClassName="text-[10px]"
+              />
 
               <div
                 aria-hidden="true"
@@ -273,23 +285,13 @@ export function MediaCard({
                   </span>
                 ) : null}
 
-                {collapsedArtwork ? (
-                  <div
-                    role="img"
-                    aria-label={`${item.name} artwork`}
-                    className="absolute inset-0 bg-cover bg-center transition-transform duration-300 ease-out group-hover:scale-[1.018]"
-                    style={{
-                      backgroundImage:
-                        `url("${collapsedArtwork}")`,
-                    }}
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(211,32,63,0.18),transparent_42%),linear-gradient(145deg,#1c1c21,#0f0f12)]">
-                    <span className="text-[10px] font-semibold tracking-[0.22em] text-[#d3203f]">
-                      PAZORA
-                    </span>
-                  </div>
-                )}
+                <MediaArtworkSurface
+                  src={collapsedArtwork}
+                  label={`${item.name} artwork`}
+                  className="absolute inset-0"
+                  imageClassName="transition-transform duration-300 ease-out group-hover:scale-[1.018]"
+                  wordmarkClassName="text-[10px]"
+                />
               </div>
 
               <div
@@ -360,23 +362,14 @@ export function MediaCard({
               : "pointer-events-none scale-[0.975] opacity-0 shadow-none",
           ].join(" ")}
         >
-          {expandedArtwork ? (
-            <div
-              role="img"
-              aria-label={`${item.name} expanded artwork`}
-              className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-[1.018]"
-              style={{
-                backgroundImage:
-                  `url("${expandedArtwork}")`,
-              }}
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(211,32,63,0.20),transparent_45%),linear-gradient(145deg,#25252b,#111114)]">
-              <span className="text-xs font-semibold tracking-[0.25em] text-[#d3203f]">
-                PAZORA
-              </span>
-            </div>
-          )}
+          <MediaArtworkSurface
+            src={expandedArtwork}
+            label={`${item.name} expanded artwork`}
+            className="absolute inset-0"
+            imageClassName="transition-transform duration-700 ease-out group-hover:scale-[1.018]"
+            fallbackClassName="bg-[radial-gradient(circle_at_50%_25%,rgba(211,32,63,0.20),transparent_45%),linear-gradient(145deg,#25252b,#111114)]"
+            wordmarkClassName="text-xs tracking-[0.25em]"
+          />
 
           <div
             aria-hidden="true"
@@ -482,7 +475,7 @@ export function MediaCard({
 
             <div className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-white/82">
               <span>
-                Details
+                {actionLabel}
               </span>
 
               <span aria-hidden="true">{"\u2192"}</span>

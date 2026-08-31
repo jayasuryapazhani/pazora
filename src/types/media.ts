@@ -126,6 +126,8 @@ export type MediaEpisodesData = {
 export type MediaHomeData = {
   libraries: MediaLibrary[];
   continueWatching: MediaShelf;
+  favorites: MediaShelf;
+  recommendations: MediaShelf;
   recentlyAdded: MediaShelf;
   movies: MediaShelf;
   series: MediaShelf;

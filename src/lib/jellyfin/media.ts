@@ -1,5 +1,7 @@
 import {
   getItemsApi,
+  getLibraryApi,
+  getSuggestionsApi,
   getTvShowsApi,
   getUserLibraryApi,
   getUserViewsApi,
@@ -201,9 +203,46 @@ export async function getMediaHomeData(
   const userViewsApi =
     getUserViewsApi(api);
 
+  const recommendationsPromise =
+    getSuggestionsApi(api)
+      .getSuggestions({
+        userId: context.user.id,
+        type: [
+          BaseItemKind.Movie,
+          BaseItemKind.Series,
+        ],
+        startIndex: 0,
+        limit: 24,
+        enableTotalRecordCount: true,
+      })
+      .then(
+        (response) =>
+          assertShelfTypes(
+            "Recommendations",
+            normalizeShelf(
+              response.data,
+            ),
+            [
+              BaseItemKind.Movie,
+              BaseItemKind.Series,
+            ],
+          ),
+      )
+      .catch(
+        () => {
+          console.warn(
+            "Pazora recommendations query failed.",
+          );
+
+          return createEmptyMediaShelf();
+        },
+      );
+
   const [
     librariesResponse,
     continueWatchingResponse,
+    favoritesResponse,
+    recommendations,
     recentlyAddedResponse,
     moviesResponse,
     seriesResponse,
@@ -228,6 +267,32 @@ export async function getMediaHomeData(
       imageTypeLimit: 2,
       enableTotalRecordCount: true,
     }),
+
+    itemsApi.getItems({
+      userId: context.user.id,
+      recursive: true,
+      limit: 24,
+      includeItemTypes: [
+        BaseItemKind.Movie,
+        BaseItemKind.Series,
+        BaseItemKind.BoxSet,
+      ],
+      collapseBoxSetItems: false,
+      fields: [...mediaFields],
+      isFavorite: true,
+      sortBy: [
+        ItemSortBy.SortName,
+      ],
+      sortOrder: [
+        SortOrder.Ascending,
+      ],
+      enableUserData: true,
+      enableImages: true,
+      imageTypeLimit: 2,
+      enableTotalRecordCount: true,
+    }),
+
+    recommendationsPromise,
 
     itemsApi.getItems({
       userId: context.user.id,
@@ -331,6 +396,21 @@ export async function getMediaHomeData(
           BaseItemKind.Episode,
         ],
       ),
+
+    favorites:
+      assertShelfTypes(
+        "My Favorites",
+        normalizeShelf(
+          favoritesResponse.data,
+        ),
+        [
+          BaseItemKind.Movie,
+          BaseItemKind.Series,
+          BaseItemKind.BoxSet,
+        ],
+      ),
+
+    recommendations,
 
     recentlyAdded:
       assertShelfTypes(
@@ -622,6 +702,43 @@ export async function getMediaSearchData(
     page,
   };
 }
+export async function getSimilarMediaShelf(
+  context: AuthenticatedJellyfinContext,
+  itemId: string,
+  limit = 18,
+): Promise<MediaShelf> {
+  const api =
+    createAuthenticatedJellyfinApi(
+      context.accessToken,
+      context.deviceId,
+    );
+
+  const response =
+    await getLibraryApi(api)
+      .getSimilarItems({
+        itemId,
+        userId: context.user.id,
+        limit,
+        fields: [...mediaFields],
+      });
+
+  const shelf =
+    normalizeShelf(
+      response.data,
+    );
+
+  const items =
+    shelf.items.filter(
+      (item) =>
+        item.id !== itemId,
+    );
+
+  return {
+    items,
+    total: items.length,
+  };
+}
+
 function createEmptyMediaShelf(): MediaShelf {
   return {
     items: [],
@@ -682,6 +799,35 @@ const collectionChildItemTypes = [
   BaseItemKind.Episode,
   BaseItemKind.BoxSet,
 ] as const;
+
+export async function mediaItemExists(
+  context: AuthenticatedJellyfinContext,
+  itemId: string,
+): Promise<boolean> {
+  const api =
+    createAuthenticatedJellyfinApi(
+      context.accessToken,
+      context.deviceId,
+    );
+
+  const response =
+    await getItemsApi(api).getItems({
+      userId: context.user.id,
+      ids: [itemId],
+      recursive: true,
+      limit: 1,
+      enableUserData: false,
+      enableImages: false,
+      enableTotalRecordCount: false,
+    });
+
+  return (
+    response.data.Items ?? []
+  ).some(
+    (item) =>
+      item.Id === itemId,
+  );
+}
 
 export async function getMediaDetailsData(
   context: AuthenticatedJellyfinContext,

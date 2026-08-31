@@ -11,6 +11,12 @@ import {
   MediaRow,
 } from "@/components/media/media-row";
 import {
+  FavoriteToggle,
+} from "@/components/media/favorite-toggle";
+import {
+  MediaArtworkSurface,
+} from "@/components/media/media-artwork-surface";
+import {
   MediaProgress,
 } from "@/components/media/media-progress";
 import {
@@ -22,6 +28,8 @@ import {
 import {
   getMediaDetailsData,
   getMediaEpisodesData,
+  getSimilarMediaShelf,
+  mediaItemExists,
 } from "@/lib/jellyfin/media";
 import {
   formatRating,
@@ -33,6 +41,7 @@ import {
 import type {
   MediaDetailsData,
   MediaEpisodesData,
+  MediaShelf,
 } from "@/types/media";
 
 type TitlePageProps = {
@@ -57,6 +66,30 @@ function getUpstreamStatus(
     error === null
   ) {
     return null;
+  }
+
+  const directStatus =
+    Reflect.get(
+      error,
+      "status",
+    );
+
+  if (
+    typeof directStatus === "number"
+  ) {
+    return directStatus;
+  }
+
+  const directStatusCode =
+    Reflect.get(
+      error,
+      "statusCode",
+    );
+
+  if (
+    typeof directStatusCode === "number"
+  ) {
+    return directStatusCode;
   }
 
   const response =
@@ -281,6 +314,22 @@ export default async function TitlePage({
       notFound();
     }
 
+    try {
+      const exists =
+        await mediaItemExists(
+          context,
+          itemId.value,
+        );
+
+      if (!exists) {
+        notFound();
+      }
+    } catch {
+      console.warn(
+        "Pazora title existence probe failed.",
+      );
+    }
+
     console.warn(
       "Pazora title details query failed.",
     );
@@ -353,6 +402,24 @@ export default async function TitlePage({
   const facts =
     buildFacts(details);
 
+  let similarMedia: MediaShelf = {
+    items: [],
+    total: 0,
+  };
+
+  try {
+    similarMedia =
+      await getSimilarMediaShelf(
+        context,
+        item.id,
+        18,
+      );
+  } catch {
+    console.warn(
+      "Pazora similar-title query failed.",
+    );
+  }
+
   let initialEpisodes:
     | MediaEpisodesData
     | null = null;
@@ -385,19 +452,14 @@ export default async function TitlePage({
       />
 
       <section className="relative min-h-[35rem] overflow-hidden pt-[var(--pazora-header-height)] sm:min-h-[40rem] lg:min-h-[44rem]">
-        {backdrop ? (
-          <div
-            role="img"
-            aria-label={`${item.name} backdrop`}
-            className="absolute inset-0 bg-cover bg-center"
-            style={{
-              backgroundImage:
-                `url("${backdrop}")`,
-            }}
-          />
-        ) : (
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_24%,rgba(211,32,63,0.18),transparent_34%),linear-gradient(120deg,#18181d,#09090b_70%)]" />
-        )}
+        <MediaArtworkSurface
+          key={`title-backdrop-${item.id}`}
+          src={backdrop}
+          label={`${item.name} backdrop`}
+          className="absolute inset-0"
+          fallbackClassName="bg-[radial-gradient(circle_at_72%_24%,rgba(211,32,63,0.18),transparent_34%),linear-gradient(120deg,#18181d,#09090b_70%)]"
+          showWordmark={false}
+        />
 
         <div
           aria-hidden="true"
@@ -473,13 +535,13 @@ export default async function TitlePage({
               />
             </div>
 
-            {item.type === "Movie" ||
-            item.type === "Episode" ? (
-              <div className="mt-6">
+            <div className="mt-6 flex flex-wrap items-start gap-3">
+              {item.type === "Movie" ||
+              item.type === "Episode" ? (
                 <Link
                   href={`/watch/${item.id}`}
                   prefetch={false}
-                  className="inline-flex items-center gap-2 rounded-md bg-white px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-white/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                  className="inline-flex min-h-10 items-center gap-2 rounded-md bg-white px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-white/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
                 >
                   <span aria-hidden="true">
                     {"\u25B6"}
@@ -491,8 +553,16 @@ export default async function TitlePage({
                     ? "Resume"
                     : "Play"}
                 </Link>
-              </div>
-            ) : null}
+              ) : null}
+
+              <FavoriteToggle
+                itemId={item.id}
+                itemName={item.name}
+                initialFavorite={
+                  item.user.favorite
+                }
+              />
+            </div>
 
             {tagline ? (
               <p className="mt-5 text-sm font-medium italic leading-6 text-white/55">
@@ -587,6 +657,20 @@ export default async function TitlePage({
               initialEpisodes
             }
           />
+        ) : null}
+
+        {similarMedia.items.length >
+        0 ? (
+          <div className="mt-14">
+            <MediaRow
+              id="more-like-this"
+              title="More Like This"
+              items={
+                similarMedia.items
+              }
+              variant="poster"
+            />
+          </div>
         ) : null}
       </div>
     </main>

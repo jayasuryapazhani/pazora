@@ -19,6 +19,7 @@ type MediaRowProps = {
   title: string;
   items: MediaItem[];
   variant?: "poster" | "landscape";
+  action?: "details" | "resume";
 };
 
 const inlineOpenDelayMs = 300;
@@ -90,6 +91,7 @@ export function MediaRow({
   title,
   items,
   variant = "poster",
+  action = "details",
 }: MediaRowProps) {
   const scroller =
     useRef<HTMLDivElement>(null);
@@ -445,6 +447,7 @@ export function MediaRow({
                     item={item}
                     variant={variant}
                     expanded={expanded}
+                    action={action}
                     onPointerEnter={() => {
                       scheduleOpen(
                         item.id,
