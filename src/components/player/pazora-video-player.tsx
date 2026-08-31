@@ -35,6 +35,12 @@ const jellyfinTicksPerSecond =
 const controlsHideDelayMs =
   2800;
 
+const touchControlsHideDelayMs =
+  4200;
+
+const touchClickWindowMs =
+  800;
+
 const playbackRateOptions = [
   0.5,
   0.75,
@@ -53,6 +59,15 @@ type SubtitleBackdrop =
   | "shadow"
   | "box"
   | "clear";
+
+type PlaybackRecoveryKind =
+  | "network"
+  | "media"
+  | "native"
+  | "fatal";
+
+const recoveryTimeoutMs =
+  12_000;
 
 const subtitleSizeOptions: Array<{
   label: string;
@@ -324,6 +339,180 @@ function SkipIcon({
   );
 }
 
+type RemoteFocusDirection =
+  | "left"
+  | "right"
+  | "up"
+  | "down";
+
+const remoteFocusableSelector =
+  "button:not([disabled]),a[href]";
+
+function isRemoteFocusable(
+  element: HTMLElement,
+): boolean {
+  const rectangle =
+    element.getBoundingClientRect();
+
+  if (
+    rectangle.width <= 0 ||
+    rectangle.height <= 0
+  ) {
+    return false;
+  }
+
+  const style =
+    window.getComputedStyle(
+      element,
+    );
+
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden"
+  );
+}
+
+function focusRemoteNeighbor(
+  container: HTMLElement,
+  current: HTMLElement,
+  direction: RemoteFocusDirection,
+): boolean {
+  const currentRectangle =
+    current.getBoundingClientRect();
+
+  const currentX =
+    currentRectangle.left +
+    currentRectangle.width / 2;
+
+  const currentY =
+    currentRectangle.top +
+    currentRectangle.height / 2;
+
+  const candidates =
+    Array.from(
+      container.querySelectorAll<HTMLElement>(
+        remoteFocusableSelector,
+      ),
+    ).filter(
+      (candidate) =>
+        candidate !== current &&
+        isRemoteFocusable(
+          candidate,
+        ),
+    );
+
+  let best:
+    | HTMLElement
+    | null = null;
+
+  let bestScore =
+    Number.POSITIVE_INFINITY;
+
+  for (const candidate of candidates) {
+    const rectangle =
+      candidate.getBoundingClientRect();
+
+    const candidateX =
+      rectangle.left +
+      rectangle.width / 2;
+
+    const candidateY =
+      rectangle.top +
+      rectangle.height / 2;
+
+    const deltaX =
+      candidateX -
+      currentX;
+
+    const deltaY =
+      candidateY -
+      currentY;
+
+    let primaryDistance: number;
+    let secondaryDistance: number;
+
+    switch (direction) {
+      case "left":
+        if (deltaX >= -1) {
+          continue;
+        }
+
+        primaryDistance =
+          Math.abs(deltaX);
+
+        secondaryDistance =
+          Math.abs(deltaY);
+        break;
+
+      case "right":
+        if (deltaX <= 1) {
+          continue;
+        }
+
+        primaryDistance =
+          Math.abs(deltaX);
+
+        secondaryDistance =
+          Math.abs(deltaY);
+        break;
+
+      case "up":
+        if (deltaY >= -1) {
+          continue;
+        }
+
+        primaryDistance =
+          Math.abs(deltaY);
+
+        secondaryDistance =
+          Math.abs(deltaX);
+        break;
+
+      case "down":
+        if (deltaY <= 1) {
+          continue;
+        }
+
+        primaryDistance =
+          Math.abs(deltaY);
+
+        secondaryDistance =
+          Math.abs(deltaX);
+        break;
+    }
+
+    // Prefer movement primarily in the requested direction,
+    // while still allowing navigation between differently
+    // aligned rows and menu grids.
+    const score =
+      primaryDistance +
+      secondaryDistance * 3;
+
+    if (score < bestScore) {
+      best =
+        candidate;
+
+      bestScore =
+        score;
+    }
+  }
+
+  if (!best) {
+    return false;
+  }
+
+  best.focus({
+    preventScroll: true,
+  });
+
+  best.scrollIntoView({
+    block: "nearest",
+    inline: "nearest",
+  });
+
+  return true;
+}
+
 export function PazoraVideoPlayer({
   item,
   playback,
@@ -344,6 +533,12 @@ export function PazoraVideoPlayer({
       null
     >(null);
 
+  const lastTouchAtRef =
+    useRef(0);
+
+  const touchInteractionRef =
+    useRef(false);
+
   const startedRef =
     useRef(false);
 
@@ -357,10 +552,53 @@ export function PazoraVideoPlayer({
   const settingsMenuOpenRef =
     useRef(false);
 
+  const subtitleButtonRef =
+    useRef<HTMLButtonElement | null>(
+      null,
+    );
+
+  const settingsButtonRef =
+    useRef<HTMLButtonElement | null>(
+      null,
+    );
+
+  const playButtonRef =
+    useRef<HTMLButtonElement | null>(
+      null,
+    );
+
+  const backLinkRef =
+    useRef<HTMLAnchorElement | null>(
+      null,
+    );
+
   const hlsRef =
     useRef<Hls | null>(
       null,
     );
+
+  const recoveryTimeoutRef =
+    useRef<
+      ReturnType<typeof setTimeout> |
+      null
+    >(null);
+
+  const recoveryInProgressRef =
+    useRef(false);
+
+  const recoveryKindRef =
+    useRef<
+      PlaybackRecoveryKind |
+      null
+    >(null);
+
+  const recoveryPositionSecondsRef =
+    useRef<number | null>(
+      null,
+    );
+
+  const recoveryShouldResumeRef =
+    useRef(false);
 
   const transportSwitchingRef =
     useRef(false);
@@ -500,6 +738,12 @@ export function PazoraVideoPlayer({
     useState<string | null>(
       null,
     );
+
+  const [
+    isRecovering,
+    setIsRecovering,
+  ] =
+    useState(false);
 
   const [
     isChangingTransport,
@@ -660,11 +904,30 @@ export function PazoraVideoPlayer({
 
         clearControlsTimer();
 
+        const hideDelayMs =
+          touchInteractionRef.current
+            ? touchControlsHideDelayMs
+            : controlsHideDelayMs;
+
         controlsTimerRef.current =
           setTimeout(
             () => {
               const video =
                 videoRef.current;
+
+              const container =
+                containerRef.current;
+
+              const activeElement =
+                document.activeElement;
+
+              const keyboardFocusInsidePlayer =
+                activeElement instanceof
+                  HTMLElement &&
+                container?.contains(
+                  activeElement,
+                ) === true &&
+                activeElement !== video;
 
               if (
                 video &&
@@ -672,19 +935,53 @@ export function PazoraVideoPlayer({
                 !subtitleMenuOpenRef
                   .current &&
                 !settingsMenuOpenRef
-                  .current
+                  .current &&
+                !keyboardFocusInsidePlayer
               ) {
                 setControlsVisible(
                   false,
                 );
               }
             },
-            controlsHideDelayMs,
+            hideDelayMs,
           );
       },
       [
         clearControlsTimer,
       ],
+    );
+
+  const handleMouseActivity =
+    useCallback(
+      () => {
+        if (
+          Date.now() -
+            lastTouchAtRef.current <
+          touchClickWindowMs
+        ) {
+          return;
+        }
+
+        touchInteractionRef.current =
+          false;
+
+        revealControls();
+      },
+      [
+        revealControls,
+      ],
+    );
+
+  const handleTouchStart =
+    useCallback(
+      () => {
+        touchInteractionRef.current =
+          true;
+
+        lastTouchAtRef.current =
+          Date.now();
+      },
+      [],
     );
 
   const absolutePositionSeconds =
@@ -787,6 +1084,142 @@ export function PazoraVideoPlayer({
         mediaSourceId,
         playSessionId,
         transport,
+      ],
+    );
+
+  const clearRecoveryTimer =
+    useCallback(
+      () => {
+        if (
+          recoveryTimeoutRef.current
+        ) {
+          clearTimeout(
+            recoveryTimeoutRef.current,
+          );
+
+          recoveryTimeoutRef.current =
+            null;
+        }
+      },
+      [],
+    );
+
+  const captureRecoveryState =
+    useCallback(
+      () => {
+        const video =
+          videoRef.current;
+
+        if (!video) {
+          return;
+        }
+
+        recoveryPositionSecondsRef
+          .current =
+          absolutePositionSeconds();
+
+        recoveryShouldResumeRef
+          .current =
+          !video.paused ||
+          !startedRef.current;
+      },
+      [
+        absolutePositionSeconds,
+      ],
+    );
+
+  const finishRecovery =
+    useCallback(
+      () => {
+        clearRecoveryTimer();
+
+        recoveryInProgressRef
+          .current =
+          false;
+
+        recoveryKindRef.current =
+          null;
+
+        recoveryPositionSecondsRef
+          .current =
+          null;
+
+        recoveryShouldResumeRef
+          .current =
+          false;
+
+        setIsRecovering(
+          false,
+        );
+
+        setPlayerError(
+          null,
+        );
+      },
+      [
+        clearRecoveryTimer,
+      ],
+    );
+
+  const failRecovery =
+    useCallback(
+      (
+        message: string,
+      ) => {
+        clearRecoveryTimer();
+
+        recoveryInProgressRef
+          .current =
+          false;
+
+        setIsRecovering(
+          false,
+        );
+
+        setIsBuffering(
+          false,
+        );
+
+        setIsPlaying(
+          false,
+        );
+
+        setPlayerError(
+          message,
+        );
+
+        setControlsVisible(
+          true,
+        );
+
+        clearControlsTimer();
+      },
+      [
+        clearControlsTimer,
+        clearRecoveryTimer,
+      ],
+    );
+
+  const armRecoveryTimeout =
+    useCallback(
+      (
+        message: string,
+      ) => {
+        clearRecoveryTimer();
+
+        recoveryTimeoutRef.current =
+          setTimeout(
+            () => {
+              failRecovery(
+                message,
+              );
+            },
+            recoveryTimeoutMs,
+          );
+      },
+      [
+        clearRecoveryTimer,
+        failRecovery,
       ],
     );
 
@@ -939,19 +1372,158 @@ export function PazoraVideoPlayer({
           return;
         }
 
+        revealControls();
+
         if (
           document.fullscreenElement
         ) {
           void document
-            .exitFullscreen();
+            .exitFullscreen()
+            .catch(() => {
+              revealControls();
+            });
 
           return;
         }
 
         void container
-          .requestFullscreen();
+          .requestFullscreen()
+          .catch(() => {
+            setFullscreen(
+              false,
+            );
+
+            revealControls();
+          });
       },
-      [],
+      [
+        revealControls,
+      ],
+    );
+
+  const closePlayerMenus =
+    useCallback(
+      (
+        restoreFocus: boolean,
+      ): boolean => {
+        const settingsWasOpen =
+          settingsMenuOpenRef
+            .current;
+
+        const subtitlesWereOpen =
+          subtitleMenuOpenRef
+            .current;
+
+        if (
+          !settingsWasOpen &&
+          !subtitlesWereOpen
+        ) {
+          return false;
+        }
+
+        settingsMenuOpenRef
+          .current =
+          false;
+
+        subtitleMenuOpenRef
+          .current =
+          false;
+
+        setSettingsMenuOpen(
+          false,
+        );
+
+        setSubtitleMenuOpen(
+          false,
+        );
+
+        revealControls();
+
+        if (restoreFocus) {
+          const target =
+            settingsWasOpen
+              ? settingsButtonRef
+                  .current
+              : subtitleButtonRef
+                  .current;
+
+          queueMicrotask(
+            () => {
+              target?.focus();
+            },
+          );
+        }
+
+        return true;
+      },
+      [
+        revealControls,
+      ],
+    );
+
+  const handleVideoClick =
+    useCallback(
+      () => {
+        if (
+          closePlayerMenus(
+            false,
+          )
+        ) {
+          return;
+        }
+
+        const recentlyTouched =
+          Date.now() -
+            lastTouchAtRef.current <
+          touchClickWindowMs;
+
+        if (!recentlyTouched) {
+          togglePlay();
+
+          return;
+        }
+
+        if (
+          controlsVisible &&
+          isPlaying
+        ) {
+          clearControlsTimer();
+
+          setControlsVisible(
+            false,
+          );
+
+          return;
+        }
+
+        revealControls();
+      },
+      [
+        clearControlsTimer,
+        closePlayerMenus,
+        controlsVisible,
+        isPlaying,
+        revealControls,
+        togglePlay,
+      ],
+    );
+
+  const handleVideoDoubleClick =
+    useCallback(
+      () => {
+        if (
+          Date.now() -
+            lastTouchAtRef.current <
+          touchClickWindowMs
+        ) {
+          return;
+        }
+
+        toggleFullscreen();
+      },
+      [
+        toggleFullscreen,
+      ],
     );
 
 
@@ -1424,6 +1996,14 @@ export function PazoraVideoPlayer({
 
         revealControls();
 
+        queueMicrotask(
+          () => {
+            subtitleButtonRef
+              .current
+              ?.focus();
+          },
+        );
+
         const requiresTransportSwitch =
           currentTrack?.delivery ===
             "burn-in" ||
@@ -1474,10 +2054,41 @@ export function PazoraVideoPlayer({
 
         if (
           !video ||
-          !hls
+          !hls ||
+          recoveryInProgressRef
+            .current
         ) {
           return;
         }
+
+        const hadCapturedState =
+          recoveryPositionSecondsRef
+            .current !==
+          null;
+
+        const positionSeconds =
+          recoveryPositionSecondsRef
+            .current ??
+          absolutePositionSeconds();
+
+        if (!hadCapturedState) {
+          recoveryShouldResumeRef
+            .current =
+            !video.paused ||
+            !startedRef.current;
+        }
+
+        recoveryPositionSecondsRef
+          .current =
+          positionSeconds;
+
+        recoveryInProgressRef
+          .current =
+          true;
+
+        setIsRecovering(
+          true,
+        );
 
         setPlayerError(
           null,
@@ -1489,27 +2100,35 @@ export function PazoraVideoPlayer({
 
         revealControls();
 
-        hls.startLoad(
-          Number.isFinite(
-            video.currentTime,
-          )
-            ? video.currentTime
-            : -1,
-        );
+        try {
+          hls.stopLoad();
 
-        void video
-          .play()
-          .catch(() => {
-            setIsBuffering(
-              false,
-            );
+          if (
+            recoveryKindRef.current ===
+              "media" ||
+            recoveryKindRef.current ===
+              "native"
+          ) {
+            hls.recoverMediaError();
+          }
 
-            setPlayerError(
-              "Playback could not be resumed. Try again.",
-            );
-          });
+          hls.startLoad(
+            positionSeconds,
+          );
+
+          armRecoveryTimeout(
+            "Playback is still unavailable. Restore the connection and try again.",
+          );
+        } catch {
+          failRecovery(
+            "Playback could not be restarted. Try again.",
+          );
+        }
       },
       [
+        absolutePositionSeconds,
+        armRecoveryTimeout,
+        failRecovery,
         revealControls,
       ],
     );
@@ -1667,39 +2286,96 @@ export function PazoraVideoPlayer({
             return;
           }
 
-          setIsBuffering(
-            false,
+          const recoveryKind:
+            PlaybackRecoveryKind =
+            data.type ===
+              Hls.ErrorTypes
+                .NETWORK_ERROR
+              ? "network"
+              : data.type ===
+                  Hls.ErrorTypes
+                    .MEDIA_ERROR
+                ? "media"
+                : "fatal";
+
+          const message =
+            recoveryKind ===
+              "network"
+              ? "The video connection was interrupted."
+              : recoveryKind ===
+                  "media"
+                ? "The browser encountered a media playback error."
+                : "Playback stopped because of an unrecoverable stream error.";
+
+          // A second fatal error during the same recovery attempt
+          // promotes the interruption to the manual Retry UI.
+          if (
+            recoveryInProgressRef
+              .current
+          ) {
+            failRecovery(
+              message,
+            );
+
+            return;
+          }
+
+          captureRecoveryState();
+
+          recoveryKindRef.current =
+            recoveryKind;
+
+          if (
+            recoveryKind ===
+            "fatal"
+          ) {
+            failRecovery(
+              message,
+            );
+
+            return;
+          }
+
+          recoveryInProgressRef
+            .current =
+            true;
+
+          setIsRecovering(
+            true,
           );
-
-          if (
-            data.type ===
-            Hls.ErrorTypes.NETWORK_ERROR
-          ) {
-            setPlayerError(
-              "The video connection was interrupted.",
-            );
-
-            hls.startLoad();
-
-            return;
-          }
-
-          if (
-            data.type ===
-            Hls.ErrorTypes.MEDIA_ERROR
-          ) {
-            setPlayerError(
-              "The browser encountered a media playback error.",
-            );
-
-            hls.recoverMediaError();
-
-            return;
-          }
 
           setPlayerError(
-            "Playback stopped because of an unrecoverable stream error.",
+            null,
           );
+
+          setIsBuffering(
+            true,
+          );
+
+          revealControls();
+
+          try {
+            if (
+              recoveryKind ===
+              "media"
+            ) {
+              hls.recoverMediaError();
+            }
+
+            hls.startLoad(
+              recoveryPositionSecondsRef
+                .current ??
+              -1,
+            );
+
+            armRecoveryTimeout(
+              "Playback recovery timed out. Restore the connection and try again.",
+            );
+          } catch {
+            failRecovery(
+              message,
+            );
+          }
         };
 
       hls.on(
@@ -1749,8 +2425,12 @@ export function PazoraVideoPlayer({
       };
     },
     [
+      armRecoveryTimeout,
+      captureRecoveryState,
+      failRecovery,
       initialSeconds,
       item.id,
+      revealControls,
       streamUrl,
       transport,
     ],
@@ -1760,6 +2440,7 @@ export function PazoraVideoPlayer({
     () => {
       return () => {
         clearControlsTimer();
+        clearRecoveryTimer();
 
         if (
           startedRef.current &&
@@ -1776,6 +2457,7 @@ export function PazoraVideoPlayer({
     },
     [
       clearControlsTimer,
+      clearRecoveryTimer,
       reportPlayback,
     ],
   );
@@ -1786,23 +2468,160 @@ export function PazoraVideoPlayer({
         (
           event: KeyboardEvent,
         ) => {
-          const target =
-            event.target;
+          const normalizedKey =
+            event.key.toLowerCase();
+
+          const remoteBackKey =
+            normalizedKey ===
+              "browserback" ||
+            normalizedKey ===
+              "goback";
+
+          if (remoteBackKey) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (
+              closePlayerMenus(
+                true,
+              )
+            ) {
+              return;
+            }
+
+            if (
+              document
+                .fullscreenElement ===
+              containerRef.current
+            ) {
+              toggleFullscreen();
+
+              return;
+            }
+
+            backLinkRef.current
+              ?.click();
+
+            return;
+          }
 
           if (
-            target instanceof
-              HTMLInputElement ||
-            target instanceof
-              HTMLTextAreaElement ||
-            target instanceof
-              HTMLSelectElement
+            event.key ===
+            "Escape"
+          ) {
+            if (
+              closePlayerMenus(
+                true,
+              )
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+
+            return;
+          }
+
+          if (
+            event.defaultPrevented ||
+            event.altKey ||
+            event.ctrlKey ||
+            event.metaKey
           ) {
             return;
           }
 
-          switch (
-            event.key.toLowerCase()
+          const container =
+            containerRef.current;
+
+          const activeElement =
+            document.activeElement instanceof
+              HTMLElement
+              ? document.activeElement
+              : null;
+
+          // Keep range controls fully native. Their arrow keys
+          // change seek/volume values and must not become remote
+          // focus-navigation commands.
+          const nativeRangeControl =
+            activeElement instanceof
+              HTMLInputElement &&
+            activeElement.type ===
+              "range";
+
+          if (nativeRangeControl) {
+            return;
+          }
+
+          const remoteDirection:
+            | RemoteFocusDirection
+            | null =
+            normalizedKey ===
+              "arrowleft"
+              ? "left"
+              : normalizedKey ===
+                  "arrowright"
+                ? "right"
+                : normalizedKey ===
+                    "arrowup"
+                  ? "up"
+                  : normalizedKey ===
+                      "arrowdown"
+                    ? "down"
+                    : null;
+
+          const remoteControlFocused =
+            container !== null &&
+            activeElement !== null &&
+            container.contains(
+              activeElement,
+            ) &&
+            activeElement.matches(
+              remoteFocusableSelector,
+            );
+
+          if (
+            remoteDirection &&
+            container &&
+            activeElement &&
+            remoteControlFocused
           ) {
+            if (
+              focusRemoteNeighbor(
+                container,
+                activeElement,
+                remoteDirection,
+              )
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+
+              revealControls();
+            }
+
+            return;
+          }
+
+          const targetElement =
+            event.target instanceof
+              Element
+              ? event.target
+              : null;
+
+          const interactiveTarget =
+            targetElement?.closest(
+              "button,a,input,textarea,select,[contenteditable='true']",
+            );
+
+          if (interactiveTarget) {
+            return;
+          }
+
+          switch (normalizedKey) {
+            case "enter":
+              event.preventDefault();
+              togglePlay();
+              break;
+
             case " ":
             case "k":
               event.preventDefault();
@@ -1810,13 +2629,30 @@ export function PazoraVideoPlayer({
               break;
 
             case "arrowleft":
+            case "j":
               event.preventDefault();
               skipBy(-10);
               break;
 
             case "arrowright":
+            case "l":
               event.preventDefault();
               skipBy(10);
+              break;
+
+            case "arrowup":
+            case "arrowdown":
+              event.preventDefault();
+
+              revealControls();
+
+              queueMicrotask(
+                () => {
+                  playButtonRef
+                    .current
+                    ?.focus();
+                },
+              );
               break;
 
             case "m":
@@ -1843,9 +2679,11 @@ export function PazoraVideoPlayer({
         () => {
           setFullscreen(
             document
-              .fullscreenElement !==
-              null,
+              .fullscreenElement ===
+              containerRef.current,
           );
+
+          revealControls();
         };
 
       window.addEventListener(
@@ -1871,6 +2709,8 @@ export function PazoraVideoPlayer({
       };
     },
     [
+      closePlayerMenus,
+      revealControls,
       skipBy,
       toggleCaptionsQuick,
       toggleFullscreen,
@@ -1922,10 +2762,10 @@ export function PazoraVideoPlayer({
 
   const subtitleFontSize =
     subtitleSize === "small"
-      ? "2.1vh"
+      ? "clamp(14px, 2.1vmin, 22px)"
       : subtitleSize === "large"
-        ? "3.2vh"
-        : "2.6vh";
+        ? "clamp(18px, 3.2vmin, 34px)"
+        : "clamp(16px, 2.6vmin, 28px)";
 
   const subtitleCueBackground =
     subtitleBackdrop === "box"
@@ -1943,15 +2783,18 @@ export function PazoraVideoPlayer({
     <section
       ref={containerRef}
       onMouseMove={
-        revealControls
+        handleMouseActivity
       }
       onMouseDown={
-        revealControls
+        handleMouseActivity
       }
       onTouchStart={
+        handleTouchStart
+      }
+      onFocusCapture={
         revealControls
       }
-      className="group relative flex h-screen w-screen select-none items-center justify-center overflow-hidden bg-black text-white"
+      className="pazora-player group relative flex h-[100dvh] w-screen touch-manipulation select-none items-center justify-center overflow-hidden bg-black text-white"
     >
       <style>
         {`
@@ -1964,6 +2807,21 @@ export function PazoraVideoPlayer({
             line-height: 1.25;
             text-shadow: ${subtitleCueShadow};
           }
+
+          .pazora-player button:focus-visible,
+          .pazora-player a:focus-visible,
+          .pazora-player input:focus-visible {
+            outline: 2px solid #ffffff;
+            outline-offset: 2px;
+          }
+
+          .pazora-player button:focus-visible,
+          .pazora-player a:focus-visible {
+            position: relative;
+            z-index: 1;
+            box-shadow:
+              0 0 0 4px rgba(255, 255, 255, 0.18);
+          }
         `}
       </style>
 
@@ -1975,10 +2833,10 @@ export function PazoraVideoPlayer({
         className="pazora-video h-full w-full bg-black object-contain"
         aria-label={`Play ${item.name}`}
         onClick={
-          togglePlay
+          handleVideoClick
         }
         onDoubleClick={
-          toggleFullscreen
+          handleVideoDoubleClick
         }
         onPlaying={() => {
           setIsPlaying(
@@ -1989,9 +2847,7 @@ export function PazoraVideoPlayer({
             false,
           );
 
-          setPlayerError(
-            null,
-          );
+          finishRecovery();
 
           stoppedRef.current =
             false;
@@ -2040,9 +2896,72 @@ export function PazoraVideoPlayer({
           revealControls();
         }}
         onCanPlay={() => {
-          setIsBuffering(
-            false,
-          );
+          const video =
+            videoRef.current;
+
+          if (
+            !recoveryInProgressRef
+              .current
+          ) {
+            setIsBuffering(
+              false,
+            );
+
+            return;
+          }
+
+          if (!video) {
+            failRecovery(
+              "Playback recovered, but the video element is unavailable.",
+            );
+
+            return;
+          }
+
+          if (
+            !recoveryShouldResumeRef
+              .current
+          ) {
+            setIsBuffering(
+              false,
+            );
+
+            finishRecovery();
+
+            return;
+          }
+
+          if (!video.paused) {
+            setIsBuffering(
+              false,
+            );
+
+            finishRecovery();
+
+            return;
+          }
+
+          void video
+            .play()
+            .catch(() => {
+              // Recovery itself succeeded. If the browser blocks
+              // automatic resume, leave the player paused and expose
+              // the normal Play control instead of treating it as
+              // another stream failure.
+              setIsBuffering(
+                false,
+              );
+
+              setIsPlaying(
+                false,
+              );
+
+              setControlsVisible(
+                true,
+              );
+
+              finishRecovery();
+            });
         }}
         onTimeUpdate={() => {
           const absolute =
@@ -2103,34 +3022,27 @@ export function PazoraVideoPlayer({
           }
         }}
         onError={() => {
-          setPlayerError(
+          // HLS may surface the same underlying failure through the
+          // native video element while an automatic recovery is
+          // already underway. Let the HLS recovery own that attempt.
+          if (
+            recoveryInProgressRef
+              .current
+          ) {
+            return;
+          }
+
+          captureRecoveryState();
+
+          recoveryKindRef.current =
+            "native";
+
+          // Keep the Jellyfin playback session alive. A successful
+          // retry continues the same session and will report progress,
+          // while a real exit/unmount still sends one final stop.
+          failRecovery(
             "The browser could not continue playing this stream.",
           );
-
-          setIsBuffering(
-            false,
-          );
-
-          setIsPlaying(
-            false,
-          );
-
-          setControlsVisible(
-            true,
-          );
-
-          if (
-            startedRef.current &&
-            !stoppedRef.current
-          ) {
-            stoppedRef.current =
-              true;
-
-            reportPlayback(
-              "stop",
-              true,
-            );
-          }
         }}
       >
         {activeSubtitleUrl ? (
@@ -2186,8 +3098,18 @@ export function PazoraVideoPlayer({
 
       {isBuffering &&
       !playerError ? (
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
+        >
           <div className="h-11 w-11 animate-spin rounded-full border-[3px] border-white/20 border-t-white" />
+
+          <span className="sr-only">
+            {isRecovering
+              ? "Reconnecting playback"
+              : "Buffering playback"}
+          </span>
         </div>
       ) : null}
 
@@ -2235,13 +3157,14 @@ export function PazoraVideoPlayer({
 
       <div
         className={[
-          "absolute inset-x-0 top-0 z-40 flex items-center px-5 py-5 transition-all duration-300 sm:px-8",
+          "absolute inset-x-0 top-0 z-40 flex items-center px-3 pb-3 pt-[max(1.25rem,env(safe-area-inset-top))] transition-all duration-300 sm:px-8 sm:pb-5",
           overlayVisible
             ? "translate-y-0 opacity-100"
             : "-translate-y-3 pointer-events-none opacity-0",
         ].join(" ")}
       >
         <Link
+          ref={backLinkRef}
           href={`/title/${item.id}`}
           prefetch={false}
           onClick={() => {
@@ -2258,7 +3181,7 @@ export function PazoraVideoPlayer({
             }
           }}
           aria-label="Back to title details"
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/35 text-2xl backdrop-blur-md transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          className="inline-flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-black/35 text-2xl backdrop-blur-md transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
           <span aria-hidden="true">
             {"\u2190"}
@@ -2289,14 +3212,14 @@ export function PazoraVideoPlayer({
 
       <div
         className={[
-          "absolute inset-x-0 bottom-0 z-50 px-5 pb-5 transition-all duration-300 sm:px-8 sm:pb-7",
+          "absolute inset-x-0 bottom-0 z-50 px-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] transition-all duration-300 sm:px-8 sm:pb-[max(1.75rem,env(safe-area-inset-bottom))]",
           overlayVisible
             ? "translate-y-0 opacity-100"
             : "translate-y-4 pointer-events-none opacity-0",
         ].join(" ")}
       >
-        <div className="mb-4 flex items-center gap-3">
-          <span className="w-14 shrink-0 text-right text-xs font-medium tabular-nums text-white/90 sm:w-16 sm:text-sm">
+        <div className="mb-3 grid grid-cols-2 items-center gap-x-3 gap-y-1 sm:mb-4 sm:flex sm:gap-3">
+          <span className="order-2 w-auto shrink-0 text-left text-[11px] font-medium tabular-nums text-white/90 sm:order-none sm:w-16 sm:text-right sm:text-sm">
             {formatTime(
               displaySeconds,
             )}
@@ -2350,7 +3273,7 @@ export function PazoraVideoPlayer({
                 );
               }
             }}
-            className="h-5 min-w-0 flex-1 cursor-pointer appearance-none bg-transparent
+            className="order-1 col-span-2 h-8 min-w-0 flex-1 touch-pan-x cursor-pointer appearance-none bg-transparent sm:order-none sm:col-auto sm:h-5
               [&::-webkit-slider-runnable-track]:h-1
               [&::-webkit-slider-runnable-track]:rounded-full
               [&::-webkit-slider-thumb]:-mt-1.5
@@ -2370,16 +3293,17 @@ export function PazoraVideoPlayer({
             }}
           />
 
-          <span className="w-14 shrink-0 text-xs font-medium tabular-nums text-white/70 sm:w-16 sm:text-sm">
+          <span className="order-3 ml-auto w-auto shrink-0 text-right text-[11px] font-medium tabular-nums text-white/70 sm:order-none sm:ml-0 sm:w-16 sm:text-left sm:text-sm">
             {formatTime(
               runtimeSeconds,
             )}
           </span>
         </div>
 
-        <div className="flex items-center justify-between gap-5">
+        <div className="flex items-center justify-between gap-1 sm:gap-5">
           <div className="flex min-w-0 items-center gap-1 sm:gap-2">
             <button
+              ref={playButtonRef}
               type="button"
               onClick={
                 togglePlay
@@ -2389,7 +3313,8 @@ export function PazoraVideoPlayer({
                   ? "Pause"
                   : "Play"
               }
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              aria-keyshortcuts="Space K"
+              className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <PlayIcon
                 paused={
@@ -2404,7 +3329,8 @@ export function PazoraVideoPlayer({
                 skipBy(-10)
               }
               aria-label="Back 10 seconds"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              aria-keyshortcuts="ArrowLeft J"
+              className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <SkipIcon direction="back" />
             </button>
@@ -2415,7 +3341,8 @@ export function PazoraVideoPlayer({
                 skipBy(10)
               }
               aria-label="Forward 10 seconds"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              aria-keyshortcuts="ArrowRight L"
+              className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <SkipIcon direction="forward" />
             </button>
@@ -2431,7 +3358,7 @@ export function PazoraVideoPlayer({
                     ? "Unmute"
                     : "Mute"
                 }
-                className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
               >
                 <VolumeIcon
                   muted={
@@ -2492,6 +3419,7 @@ export function PazoraVideoPlayer({
 
           <div className="relative flex items-center gap-1 sm:gap-2">
             <button
+              ref={settingsButtonRef}
               type="button"
               onClick={
                 toggleSettingsMenu
@@ -2500,8 +3428,9 @@ export function PazoraVideoPlayer({
               aria-expanded={
                 settingsMenuOpen
               }
+              aria-controls="pazora-playback-settings"
               className={[
-                "inline-flex h-11 w-11 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
+                "inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
                 settingsMenuOpen
                   ? "bg-white text-black"
                   : "hover:bg-white/10",
@@ -2511,7 +3440,12 @@ export function PazoraVideoPlayer({
             </button>
 
             {settingsMenuOpen ? (
-              <div className="absolute bottom-14 right-12 max-h-[70vh] w-[min(22rem,calc(100vw-2.5rem))] overflow-y-auto rounded-2xl border border-white/10 bg-[#151515]/95 p-3 shadow-2xl backdrop-blur-xl">
+              <div
+                id="pazora-playback-settings"
+                role="dialog"
+                aria-label="Playback settings"
+                className="absolute bottom-14 right-0 max-h-[72dvh] w-[calc(100vw-1.5rem)] max-w-[22rem] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-[#151515]/95 p-3 shadow-2xl backdrop-blur-xl sm:right-12 sm:max-h-[70vh] [&_button]:min-h-11"
+              >
                 <div className="px-2 pb-3 pt-1">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
                     Playback speed
@@ -2877,6 +3811,7 @@ export function PazoraVideoPlayer({
             ) : null}
 
             <button
+              ref={subtitleButtonRef}
               type="button"
               onClick={
                 toggleSubtitleMenu
@@ -2890,8 +3825,10 @@ export function PazoraVideoPlayer({
               aria-expanded={
                 subtitleMenuOpen
               }
+              aria-controls="pazora-subtitles-menu"
+              aria-keyshortcuts="C"
               className={[
-                "inline-flex h-11 min-w-11 items-center justify-center rounded-full px-2 text-sm font-bold tracking-[-0.04em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
+                "inline-flex h-11 min-w-11 touch-manipulation items-center justify-center rounded-full px-2 text-sm font-bold tracking-[-0.04em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
                 selectedSubtitleIndex !==
                 null
                   ? "bg-white text-black hover:bg-white/90"
@@ -2907,7 +3844,12 @@ export function PazoraVideoPlayer({
             </button>
 
             {subtitleMenuOpen ? (
-              <div className="absolute bottom-14 right-0 w-64 overflow-hidden rounded-xl border border-white/10 bg-[#151515]/95 p-2 shadow-2xl backdrop-blur-xl">
+              <div
+                id="pazora-subtitles-menu"
+                role="dialog"
+                aria-label="Subtitles"
+                className="absolute bottom-14 right-0 max-h-[60dvh] w-[calc(100vw-1.5rem)] max-w-72 overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-[#151515]/95 p-2 shadow-2xl backdrop-blur-xl [&_button]:min-h-11"
+              >
                 <p className="px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
                   Subtitles
                 </p>
@@ -2993,7 +3935,8 @@ export function PazoraVideoPlayer({
                   ? "Exit fullscreen"
                   : "Enter fullscreen"
               }
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              aria-keyshortcuts="F"
+              className="inline-flex h-11 w-11 touch-manipulation items-center justify-center rounded-full transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               <FullscreenIcon />
             </button>
