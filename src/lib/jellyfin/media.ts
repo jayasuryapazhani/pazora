@@ -1,5 +1,6 @@
 import {
   getItemsApi,
+  getLibraryApi,
   getTvShowsApi,
   getUserLibraryApi,
   getUserViewsApi,
@@ -660,6 +661,43 @@ export async function getMediaSearchData(
     page,
   };
 }
+export async function getSimilarMediaShelf(
+  context: AuthenticatedJellyfinContext,
+  itemId: string,
+  limit = 18,
+): Promise<MediaShelf> {
+  const api =
+    createAuthenticatedJellyfinApi(
+      context.accessToken,
+      context.deviceId,
+    );
+
+  const response =
+    await getLibraryApi(api)
+      .getSimilarItems({
+        itemId,
+        userId: context.user.id,
+        limit,
+        fields: [...mediaFields],
+      });
+
+  const shelf =
+    normalizeShelf(
+      response.data,
+    );
+
+  const items =
+    shelf.items.filter(
+      (item) =>
+        item.id !== itemId,
+    );
+
+  return {
+    items,
+    total: items.length,
+  };
+}
+
 function createEmptyMediaShelf(): MediaShelf {
   return {
     items: [],

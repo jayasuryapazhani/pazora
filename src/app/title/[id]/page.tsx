@@ -25,6 +25,7 @@ import {
 import {
   getMediaDetailsData,
   getMediaEpisodesData,
+  getSimilarMediaShelf,
 } from "@/lib/jellyfin/media";
 import {
   formatRating,
@@ -36,6 +37,7 @@ import {
 import type {
   MediaDetailsData,
   MediaEpisodesData,
+  MediaShelf,
 } from "@/types/media";
 
 type TitlePageProps = {
@@ -356,6 +358,24 @@ export default async function TitlePage({
   const facts =
     buildFacts(details);
 
+  let similarMedia: MediaShelf = {
+    items: [],
+    total: 0,
+  };
+
+  try {
+    similarMedia =
+      await getSimilarMediaShelf(
+        context,
+        item.id,
+        18,
+      );
+  } catch {
+    console.warn(
+      "Pazora similar-title query failed.",
+    );
+  }
+
   let initialEpisodes:
     | MediaEpisodesData
     | null = null;
@@ -598,6 +618,20 @@ export default async function TitlePage({
               initialEpisodes
             }
           />
+        ) : null}
+
+        {similarMedia.items.length >
+        0 ? (
+          <div className="mt-14">
+            <MediaRow
+              id="more-like-this"
+              title="More Like This"
+              items={
+                similarMedia.items
+              }
+              variant="poster"
+            />
+          </div>
         ) : null}
       </div>
     </main>
