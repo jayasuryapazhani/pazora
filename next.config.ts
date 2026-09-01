@@ -20,7 +20,19 @@ const securityHeaders = [
   },
 ] as const;
 
+const allowedDevOrigin =
+  process.env
+    .PAZORA_ALLOWED_DEV_ORIGIN
+    ?.trim();
+
 const nextConfig: NextConfig = {
+  ...(allowedDevOrigin
+    ? {
+        allowedDevOrigins: [
+          allowedDevOrigin,
+        ],
+      }
+    : {}),
   poweredByHeader: false,
 
   async headers() {

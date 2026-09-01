@@ -22,7 +22,11 @@ type LoginState = {
   error: string | null;
 };
 
-export function LoginForm() {
+export function LoginForm({
+  returnTo = "/browse",
+}: {
+  returnTo?: string;
+}) {
   const router = useRouter();
 
   const [server, setServer] =
@@ -130,7 +134,7 @@ export function LoginForm() {
         );
       }
 
-      router.push("/browse");
+      router.push(returnTo);
       router.refresh();
     } catch (error) {
       setState({
@@ -163,6 +167,8 @@ export function LoginForm() {
       </div>
 
       <form
+        method="post"
+        action="/api/auth/login"
         onSubmit={handleSubmit}
         className="rounded-lg border border-white/[0.08] bg-[#111114]/90 p-6 shadow-[0_30px_90px_rgba(0,0,0,0.55)] backdrop-blur-xl sm:p-7"
       >
