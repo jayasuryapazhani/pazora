@@ -1,7 +1,17 @@
-import { cookies } from "next/headers";
+import {
+  cookies,
+  headers,
+} from "next/headers";
 
-import { sessionCookies } from "@/lib/auth/session";
-import { getCurrentSessionUser } from "@/lib/jellyfin/server";
+import {
+  readDeviceSession,
+} from "@/lib/auth/device-session";
+import {
+  sessionCookies,
+} from "@/lib/auth/session";
+import {
+  getCurrentSessionUser,
+} from "@/lib/jellyfin/server";
 
 export type JellyfinContextResult =
   | {
@@ -21,35 +31,123 @@ export type JellyfinContextResult =
     };
 
 export type AuthenticatedJellyfinContext =
-  Extract<JellyfinContextResult, { status: "valid" }>;
+  Extract<
+    JellyfinContextResult,
+    {
+      status: "valid";
+    }
+  >;
 
-export async function getJellyfinContext(): Promise<JellyfinContextResult> {
-  const cookieStore = await cookies();
+type SessionCredentialsResult =
+  | {
+      status: "anonymous";
+    }
+  | {
+      status: "invalid";
+    }
+  | {
+      status: "valid";
+      accessToken: string;
+      deviceId: string;
+    };
 
-  const accessToken =
+async function getSessionCredentials(): Promise<SessionCredentialsResult> {
+  const cookieStore =
+    await cookies();
+
+  const cookieAccessToken =
     cookieStore.get(
       sessionCookies.accessToken,
     )?.value;
 
-  const deviceId =
+  const cookieDeviceId =
     cookieStore.get(
       sessionCookies.deviceId,
     )?.value;
 
-  if (!accessToken || !deviceId) {
+  if (
+    cookieAccessToken &&
+    cookieDeviceId
+  ) {
+    return {
+      status: "valid",
+      accessToken:
+        cookieAccessToken,
+      deviceId:
+        cookieDeviceId,
+    };
+  }
+
+  const headerStore =
+    await headers();
+
+  const authorization =
+    headerStore
+      .get("authorization")
+      ?.trim();
+
+  if (!authorization) {
+    return {
+      status: "anonymous",
+    };
+  }
+
+  const match =
+    /^Bearer\s+(.+)$/i.exec(
+      authorization,
+    );
+
+  if (!match) {
     return {
       status: "anonymous",
     };
   }
 
   try {
-    const user =
-      await getCurrentSessionUser(
-        accessToken,
-        deviceId,
+    const claims =
+      readDeviceSession(
+        match[1].trim(),
       );
 
-    if (!user.Id || !user.Name) {
+    return {
+      status: "valid",
+      accessToken:
+        claims.accessToken,
+      deviceId:
+        claims.deviceId,
+    };
+  } catch {
+    return {
+      status: "invalid",
+    };
+  }
+}
+
+export async function getJellyfinContext(): Promise<JellyfinContextResult> {
+  const credentials =
+    await getSessionCredentials();
+
+  if (
+    credentials.status !==
+    "valid"
+  ) {
+    return {
+      status:
+        credentials.status,
+    };
+  }
+
+  try {
+    const user =
+      await getCurrentSessionUser(
+        credentials.accessToken,
+        credentials.deviceId,
+      );
+
+    if (
+      !user.Id ||
+      !user.Name
+    ) {
       return {
         status: "invalid",
       };
@@ -57,8 +155,10 @@ export async function getJellyfinContext(): Promise<JellyfinContextResult> {
 
     return {
       status: "valid",
-      accessToken,
-      deviceId,
+      accessToken:
+        credentials.accessToken,
+      deviceId:
+        credentials.deviceId,
       user: {
         id: user.Id,
         name: user.Name,
