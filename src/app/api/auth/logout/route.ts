@@ -4,18 +4,25 @@ import {
 } from "next/server";
 
 import {
+  getJellyfinContext,
+} from "@/lib/auth/jellyfin-context";
+import {
   legacySessionCookies,
   sessionCookies,
 } from "@/lib/auth/session";
-import { endJellyfinSession } from "@/lib/jellyfin/server";
+import {
+  endJellyfinSession,
+} from "@/lib/jellyfin/server";
 
-export const dynamic = "force-dynamic";
+export const dynamic =
+  "force-dynamic";
 
 function clearAuthenticationCookies(
   response: NextResponse,
 ) {
   const secure =
-    process.env.NODE_ENV === "production";
+    process.env.NODE_ENV ===
+    "production";
 
   const expiredCookie = {
     httpOnly: true,
@@ -42,56 +49,46 @@ function clearAuthenticationCookies(
     );
   }
 
-  // Keep the device ID so repeated logins from the same
-  // browser remain one Jellyfin device instead of creating
-  // a new device entry every time.
+  // Preserve the browser device ID so later browser logins
+  // continue representing the same Jellyfin device.
 }
 
-async function revokeSession(
-  request: NextRequest,
-) {
-  const accessToken =
-    request.cookies.get(
-      sessionCookies.accessToken,
-    )?.value;
+async function revokeSession() {
+  const context =
+    await getJellyfinContext();
 
-  const deviceId =
-    request.cookies.get(
-      sessionCookies.deviceId,
-    )?.value;
-
-  if (!accessToken || !deviceId) {
+  if (context.status !== "valid") {
     return;
   }
 
   try {
     await endJellyfinSession(
-      accessToken,
-      deviceId,
+      context.accessToken,
+      context.deviceId,
     );
   } catch {
-    // We still clear the local session even if Jellyfin
-    // already considers the token invalid.
+    // Local authentication is still discarded even when
+    // Jellyfin already considers the session invalid.
     //
-    // Do not log the underlying HTTP error object because
-    // it may contain authentication headers/access tokens.
+    // Never log HTTP error objects here because they can
+    // contain authentication headers.
     console.warn(
       "Unable to revoke Jellyfin session.",
     );
   }
 }
 
-export async function POST(
-  request: NextRequest,
-) {
-  await revokeSession(request);
+export async function POST() {
+  await revokeSession();
 
   const response =
     NextResponse.json({
       success: true,
     });
 
-  clearAuthenticationCookies(response);
+  clearAuthenticationCookies(
+    response,
+  );
 
   return response;
 }
@@ -99,10 +96,13 @@ export async function POST(
 export async function GET(
   request: NextRequest,
 ) {
-  await revokeSession(request);
+  await revokeSession();
 
   const loginUrl =
-    new URL("/login", request.url);
+    new URL(
+      "/login",
+      request.url,
+    );
 
   if (
     request.nextUrl.searchParams.get(
@@ -116,9 +116,13 @@ export async function GET(
   }
 
   const response =
-    NextResponse.redirect(loginUrl);
+    NextResponse.redirect(
+      loginUrl,
+    );
 
-  clearAuthenticationCookies(response);
+  clearAuthenticationCookies(
+    response,
+  );
 
   return response;
 }

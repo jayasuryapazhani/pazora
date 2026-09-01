@@ -4,18 +4,27 @@ import {
 } from "next/server";
 
 import {
+  getJellyfinContext,
+} from "@/lib/auth/jellyfin-context";
+import {
   legacySessionCookies,
   sessionCookies,
 } from "@/lib/auth/session";
-import { getCurrentSessionUser } from "@/lib/jellyfin/server";
 
-export const dynamic = "force-dynamic";
+export const dynamic =
+  "force-dynamic";
+
+const privateNoStoreHeaders = {
+  "Cache-Control":
+    "private, no-store",
+} as const;
 
 function clearInvalidAuthentication(
   response: NextResponse,
 ) {
   const secure =
-    process.env.NODE_ENV === "production";
+    process.env.NODE_ENV ===
+    "production";
 
   const expiredCookie = {
     httpOnly: true,
@@ -46,62 +55,49 @@ function clearInvalidAuthentication(
 export async function GET(
   request: NextRequest,
 ) {
-  const accessToken =
-    request.cookies.get(
-      sessionCookies.accessToken,
-    )?.value;
+  const context =
+    await getJellyfinContext();
 
-  const deviceId =
-    request.cookies.get(
-      sessionCookies.deviceId,
-    )?.value;
-
-  if (!accessToken || !deviceId) {
+  if (context.status === "valid") {
     return NextResponse.json(
+      {
+        authenticated: true,
+        user: context.user,
+      },
+      {
+        headers:
+          privateNoStoreHeaders,
+      },
+    );
+  }
+
+  const response =
+    NextResponse.json(
       {
         authenticated: false,
       },
       {
         status: 401,
+        headers:
+          privateNoStoreHeaders,
       },
     );
-  }
 
-  try {
-    const user =
-      await getCurrentSessionUser(
-        accessToken,
-        deviceId,
-      );
+  const hasBrowserAccessToken =
+    Boolean(
+      request.cookies.get(
+        sessionCookies.accessToken,
+      )?.value,
+    );
 
-    if (!user.Id || !user.Name) {
-      throw new Error(
-        "Jellyfin returned an invalid user.",
-      );
-    }
-
-    return NextResponse.json({
-      authenticated: true,
-      user: {
-        id: user.Id,
-        name: user.Name,
-      },
-    });
-  } catch {
-    const response =
-      NextResponse.json(
-        {
-          authenticated: false,
-        },
-        {
-          status: 401,
-        },
-      );
-
+  if (
+    context.status === "invalid" &&
+    hasBrowserAccessToken
+  ) {
     clearInvalidAuthentication(
       response,
     );
-
-    return response;
   }
+
+  return response;
 }

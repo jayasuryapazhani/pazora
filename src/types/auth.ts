@@ -10,6 +10,17 @@ export type LoginResponse = {
   };
 };
 
+export type DeviceLoginResponse = {
+  user: {
+    id: string;
+    name: string;
+  };
+  session: {
+    token: string;
+    expiresAt: string;
+  };
+};
+
 export type SessionResponse = {
   authenticated: true;
   user: {
