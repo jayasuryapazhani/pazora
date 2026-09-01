@@ -1,5 +1,6 @@
 import { Jellyfin } from "@jellyfin/sdk";
 import {
+  getQuickConnectApi,
   getSessionApi,
   getSystemApi,
   getUserApi,
@@ -139,4 +140,109 @@ export async function endJellyfinSession(
   await getSessionApi(
     api,
   ).reportSessionEnded();
+}
+
+function createRokuQuickConnectApi(
+  deviceId: string,
+) {
+  return createJellyfinApi(
+    deviceId,
+    `${appConfig.name} Roku`,
+  );
+}
+
+export async function isJellyfinQuickConnectEnabled(
+  deviceId: string,
+) {
+  const api =
+    createRokuQuickConnectApi(
+      deviceId,
+    );
+
+  const response =
+    await getQuickConnectApi(
+      api,
+    ).getQuickConnectEnabled();
+
+  return response.data === true;
+}
+
+export async function initiateJellyfinQuickConnect(
+  deviceId: string,
+) {
+  const api =
+    createRokuQuickConnectApi(
+      deviceId,
+    );
+
+  const response =
+    await getQuickConnectApi(
+      api,
+    ).initiateQuickConnect();
+
+  return response.data;
+}
+
+export async function getJellyfinQuickConnectState(
+  secret: string,
+  deviceId: string,
+) {
+  const api =
+    createRokuQuickConnectApi(
+      deviceId,
+    );
+
+  const response =
+    await getQuickConnectApi(
+      api,
+    ).getQuickConnectState({
+      secret,
+    });
+
+  return response.data;
+}
+
+export async function authenticateJellyfinQuickConnect(
+  secret: string,
+  deviceId: string,
+) {
+  const api =
+    createRokuQuickConnectApi(
+      deviceId,
+    );
+
+  const response =
+    await getUserApi(
+      api,
+    ).authenticateWithQuickConnect({
+      quickConnectDto: {
+        Secret:
+          secret,
+      },
+    });
+
+  return response.data;
+}
+
+export async function authorizeJellyfinQuickConnect(
+  accessToken: string,
+  deviceId: string,
+  code: string,
+  userId: string,
+) {
+  const api =
+    createAuthenticatedJellyfinApi(
+      accessToken,
+      deviceId,
+    );
+
+  const response =
+    await getQuickConnectApi(
+      api,
+    ).authorizeQuickConnect({
+      code,
+      userId,
+    });
+
+  return response.data === true;
 }
