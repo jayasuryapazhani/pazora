@@ -4,8 +4,8 @@ Pazora is a private, self-hosted streaming interface built on top of Jellyfin. I
 
 **Current release:** `1.0.0`  
 **Current status:** Stable movie-first production release  
-**Public app:** `https://media.lifeofpriya.com`  
-**Jellyfin:** `https://jellyfin.lifeofpriya.com`
+**Public app:** `inactive`  
+**Jellyfin:** `inactive`
 
 ---
 
@@ -35,7 +35,7 @@ Browser / future native clients
           |
           | HTTPS
           v
-https://media.lifeofpriya.com
+https://media.domain .com
           |
           v
       Public Caddy :443
@@ -59,7 +59,7 @@ The public Caddy layer keeps two responsibilities separate:
 - normal Pazora pages and API calls go to the Next.js application
 - artwork and media requests go through the local Pazora/Jellyfin gateway
 
-Jellyfin Web remains separately available at `jellyfin.lifeofpriya.com`.
+Jellyfin Web remains separately available at `jellyfin.[domain] .com`.
 
 ---
 
@@ -252,7 +252,7 @@ The high-level playback flow is:
 3. Pazora obtains Jellyfin playback information
 4. Pazora chooses source/audio/subtitle/quality preferences
 5. Pazora creates a short-lived encrypted playback grant
-6. Browser loads HLS from media.lifeofpriya.com
+6. Browser loads HLS from media. .com
 7. Gateway forward-auth validates the grant
 8. Gateway injects the Jellyfin token upstream only
 9. Jellyfin returns HLS playlists/segments
@@ -309,7 +309,7 @@ The stack has been reboot-tested without manually reopening terminals.
 A deep production readiness check is available through:
 
 ```text
-https://media.lifeofpriya.com/api/health?deep=1
+https://media.  .com/api/health?deep=1
 ```
 
 It validates the application configuration and live Jellyfin reachability.
@@ -377,7 +377,7 @@ The roadmap below records both the original progression and the actual implement
 | 10 | Media resilience | ✅ Complete | Library recovery, artwork resilience, playback recovery. |
 | 11 | Production readiness | ✅ Complete | Secure response behavior, readiness safeguards, deep Jellyfin health checks. |
 | 12 | Pazora 1.0.0 release | ✅ Complete | Movie-first production release merged and validated. |
-| 13 | Public Pazora entrypoint | ✅ Complete | `media.lifeofpriya.com` serves Pazora and red P app icon. |
+| 13 | Public Pazora entrypoint | ✅ Complete | `media.  .com` serves Pazora and red P app icon. |
 | 14 | iPhone Safari fullscreen | ✅ Complete | WebKit native-video fullscreen fallback added and runtime-tested on iPhone Safari. |
 
 ---
